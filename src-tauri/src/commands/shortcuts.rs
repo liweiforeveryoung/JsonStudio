@@ -1,6 +1,6 @@
-use tauri::{AppHandle, Manager, Emitter, WebviewWindow};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 #[tauri::command]
 pub async fn update_shortcut(app: AppHandle, id: String, key: String) -> Result<(), String> {
@@ -10,13 +10,14 @@ pub async fn update_shortcut(app: AppHandle, id: String, key: String) -> Result<
         "format_clipboard" => "CommandOrControl+Shift+V",
         _ => return Err("Unknown shortcut id".to_string()),
     };
-    
+
     let _ = app.global_shortcut().unregister(old_key);
-    
+
     // Parse shortcut string
-    let shortcut: Shortcut = key.parse()
+    let shortcut: Shortcut = key
+        .parse()
         .map_err(|e| format!("Invalid shortcut format: {:?}", e))?;
-    
+
     // Register new shortcut
     match id.as_str() {
         "show_app" => {
@@ -43,7 +44,7 @@ pub async fn update_shortcut(app: AppHandle, id: String, key: String) -> Result<
         }
         _ => return Err("Unknown shortcut id".to_string()),
     }
-    
+
     Ok(())
 }
 
@@ -60,32 +61,38 @@ pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn format_clipboard_and_show(app: AppHandle) -> Result<(), String> {
     // Get clipboard content
-    let clipboard_text = app.clipboard()
+    let clipboard_text = app
+        .clipboard()
         .read_text()
         .map_err(|e| format!("Failed to read clipboard: {}", e))?;
-    
+
     if clipboard_text.is_empty() {
         return Err("Clipboard is empty".to_string());
     }
-    
+
     // Show window first
-    let window = app.get_webview_window("main")
+    let window = app
+        .get_webview_window("main")
         .ok_or("Main window not found".to_string())?;
-    
+
     ensure_window_in_front(&window)?;
-    
+
     // Try to parse and format JSON
     match serde_json::from_str::<serde_json::Value>(&clipboard_text) {
         Ok(parsed) => {
             // Valid JSON - format it
             let formatted = serde_json::to_string_pretty(&parsed)
                 .map_err(|e| format!("Failed to format JSON: {}", e))?;
-            
-            window.emit("clipboard-formatted", formatted).map_err(|e| e.to_string())?;
+
+            window
+                .emit("clipboard-formatted", formatted)
+                .map_err(|e| e.to_string())?;
         }
         Err(_) => {
             // Invalid JSON - paste as is, let user see and fix it
-            window.emit("clipboard-pasted-raw", clipboard_text).map_err(|e| e.to_string())?;
+            window
+                .emit("clipboard-pasted-raw", clipboard_text)
+                .map_err(|e| e.to_string())?;
         }
     }
 

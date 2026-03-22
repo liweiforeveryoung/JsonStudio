@@ -1,4 +1,4 @@
-use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont, point};
+use ab_glyph::{point, Font, FontRef, GlyphId, PxScale, ScaleFont};
 use base64::Engine;
 use image::Rgba;
 use serde::Deserialize;
@@ -20,7 +20,11 @@ static WATERMARK_LIGHT: OnceLock<WatermarkAssets> = OnceLock::new();
 static WATERMARK_DARK: OnceLock<WatermarkAssets> = OnceLock::new();
 
 fn get_watermark(is_dark: bool) -> &'static WatermarkAssets {
-    let lock = if is_dark { &WATERMARK_DARK } else { &WATERMARK_LIGHT };
+    let lock = if is_dark {
+        &WATERMARK_DARK
+    } else {
+        &WATERMARK_LIGHT
+    };
     lock.get_or_init(|| build_watermark())
 }
 
@@ -32,10 +36,20 @@ fn build_watermark() -> WatermarkAssets {
     let glyph_cache = GlyphCache::new(&font_regular, &font_bold, wm_scale);
     let icon_size = (wm_font_size * 1.5).round() as u32;
     let icon = image::load_from_memory(ICON_PNG).unwrap();
-    let resized = image::imageops::resize(&icon.to_rgba8(), icon_size, icon_size, image::imageops::FilterType::Triangle);
+    let resized = image::imageops::resize(
+        &icon.to_rgba8(),
+        icon_size,
+        icon_size,
+        image::imageops::FilterType::Triangle,
+    );
     let icon_rgba = resized.into_raw();
 
-    WatermarkAssets { icon_rgba, icon_size, glyph_cache, font_size: wm_font_size }
+    WatermarkAssets {
+        icon_rgba,
+        icon_size,
+        glyph_cache,
+        font_size: wm_font_size,
+    }
 }
 
 #[derive(Deserialize)]
@@ -95,7 +109,9 @@ fn parse_color(s: &str) -> Rgba<u8> {
             let b = parts[2].trim().parse::<f32>().unwrap_or(0.0) as u8;
             let a = if parts.len() >= 4 {
                 (parts[3].trim().parse::<f32>().unwrap_or(1.0) * 255.0) as u8
-            } else { 255 };
+            } else {
+                255
+            };
             return Rgba([r, g, b, a]);
         }
     }
@@ -127,7 +143,9 @@ impl GlyphCache {
 
         let mut cache = GlyphCache {
             glyphs: HashMap::new(),
-            advance, advance_bold, ascent,
+            advance,
+            advance_bold,
+            ascent,
         };
 
         for c in (0x20u8..=0x7E).map(|b| b as char) {
@@ -144,7 +162,9 @@ impl GlyphCache {
             let bounds = outlined.px_bounds();
             let w = (bounds.max.x - bounds.min.x).ceil() as u32;
             let h = (bounds.max.y - bounds.min.y).ceil() as u32;
-            if w == 0 || h == 0 { return; }
+            if w == 0 || h == 0 {
+                return;
+            }
             let mut coverage = vec![0u8; (w * h) as usize];
             outlined.draw(|x, y, c| {
                 let idx = (y * w + x) as usize;
@@ -152,12 +172,16 @@ impl GlyphCache {
                     coverage[idx] = (c * 255.0).min(255.0) as u8;
                 }
             });
-            self.glyphs.insert((glyph_id, bold), GlyphBitmap {
-                width: w, height: h,
-                offset_x: bounds.min.x.floor() as i32,
-                offset_y: bounds.min.y.floor() as i32,
-                coverage,
-            });
+            self.glyphs.insert(
+                (glyph_id, bold),
+                GlyphBitmap {
+                    width: w,
+                    height: h,
+                    offset_x: bounds.min.x.floor() as i32,
+                    offset_y: bounds.min.y.floor() as i32,
+                    coverage,
+                },
+            );
         }
     }
 
@@ -167,18 +191,42 @@ impl GlyphCache {
 }
 
 #[inline]
-fn blit_glyph(buf: &mut [u8], stride: usize, img_w: i32, img_h: i32, bitmap: &GlyphBitmap, x: i32, y: i32, cr: u32, cg: u32, cb: u32, ca: u32) {
+fn blit_glyph(
+    buf: &mut [u8],
+    stride: usize,
+    img_w: i32,
+    img_h: i32,
+    bitmap: &GlyphBitmap,
+    x: i32,
+    y: i32,
+    cr: u32,
+    cg: u32,
+    cb: u32,
+    ca: u32,
+) {
     let bx = x + bitmap.offset_x;
     let by = y + bitmap.offset_y;
-    if bx >= img_w || by >= img_h { return; }
+    if bx >= img_w || by >= img_h {
+        return;
+    }
     let bx_end = bx + bitmap.width as i32;
     let by_end = by + bitmap.height as i32;
-    if bx_end <= 0 || by_end <= 0 { return; }
+    if bx_end <= 0 || by_end <= 0 {
+        return;
+    }
 
     let y_start = if by < 0 { (-by) as u32 } else { 0 };
-    let y_end = if by_end > img_h { (img_h - by) as u32 } else { bitmap.height };
+    let y_end = if by_end > img_h {
+        (img_h - by) as u32
+    } else {
+        bitmap.height
+    };
     let x_start = if bx < 0 { (-bx) as u32 } else { 0 };
-    let x_end = if bx_end > img_w { (img_w - bx) as u32 } else { bitmap.width };
+    let x_end = if bx_end > img_w {
+        (img_w - bx) as u32
+    } else {
+        bitmap.width
+    };
 
     let buf_len = buf.len();
     for py in y_start..y_end {
@@ -187,12 +235,16 @@ fn blit_glyph(buf: &mut [u8], stride: usize, img_w: i32, img_h: i32, bitmap: &Gl
         let img_row = iy * stride;
         for px in x_start..x_end {
             let cov = bitmap.coverage[glyph_row + px as usize] as u32;
-            if cov == 0 { continue; }
+            if cov == 0 {
+                continue;
+            }
             let alpha = (ca * cov) / 255;
             let inv = 255 - alpha;
             let idx = img_row + (bx + px as i32) as usize * 3;
-            if idx + 2 >= buf_len { continue; }
-            buf[idx]     = ((cr * alpha + buf[idx] as u32 * inv) / 255) as u8;
+            if idx + 2 >= buf_len {
+                continue;
+            }
+            buf[idx] = ((cr * alpha + buf[idx] as u32 * inv) / 255) as u8;
             buf[idx + 1] = ((cg * alpha + buf[idx + 1] as u32 * inv) / 255) as u8;
             buf[idx + 2] = ((cb * alpha + buf[idx + 2] as u32 * inv) / 255) as u8;
         }
@@ -200,11 +252,23 @@ fn blit_glyph(buf: &mut [u8], stride: usize, img_w: i32, img_h: i32, bitmap: &Gl
 }
 
 fn draw_cached_text(
-    buf: &mut [u8], stride: usize, img_w: i32, img_h: i32,
-    cache: &GlyphCache, text: &str, x: f32, y: f32,
-    color: Rgba<u8>, bold: bool, font: &FontRef,
+    buf: &mut [u8],
+    stride: usize,
+    img_w: i32,
+    img_h: i32,
+    cache: &GlyphCache,
+    text: &str,
+    x: f32,
+    y: f32,
+    color: Rgba<u8>,
+    bold: bool,
+    font: &FontRef,
 ) {
-    let adv = if bold { cache.advance_bold } else { cache.advance };
+    let adv = if bold {
+        cache.advance_bold
+    } else {
+        cache.advance
+    };
     let baseline_y = y + cache.ascent;
     let cr = color[0] as u32;
     let cg = color[1] as u32;
@@ -213,16 +277,36 @@ fn draw_cached_text(
     let mut cx = x;
     for ch in text.chars() {
         if let Some(bitmap) = cache.get(ch, bold, font) {
-            blit_glyph(buf, stride, img_w, img_h, bitmap, cx as i32, baseline_y as i32, cr, cg, cb, ca);
+            blit_glyph(
+                buf,
+                stride,
+                img_w,
+                img_h,
+                bitmap,
+                cx as i32,
+                baseline_y as i32,
+                cr,
+                cg,
+                cb,
+                ca,
+            );
         }
         cx += adv;
     }
 }
 
 #[derive(Clone)]
-struct Token { text: String, color: Rgba<u8>, bold: bool }
+struct Token {
+    text: String,
+    color: Rgba<u8>,
+    bold: bool,
+}
 
-fn tokenize_json(content: &str, colors: &ExportColors, bracket_colors: &[String]) -> Vec<Vec<Token>> {
+fn tokenize_json(
+    content: &str,
+    colors: &ExportColors,
+    bracket_colors: &[String],
+) -> Vec<Vec<Token>> {
     let bracket_palette: Vec<Rgba<u8>> = if bracket_colors.is_empty() {
         vec![parse_color(&colors.delimiter_color)]
     } else {
@@ -249,66 +333,133 @@ fn tokenize_json(content: &str, colors: &ExportColors, bracket_colors: &[String]
                 let mut ws = String::new();
                 while i < chars.len() && (chars[i] == ' ' || chars[i] == '\t') {
                     ws.push(if chars[i] == '\t' { ' ' } else { chars[i] });
-                    if chars[i] == '\t' { ws.push(' '); }
+                    if chars[i] == '\t' {
+                        ws.push(' ');
+                    }
                     i += 1;
                 }
-                tokens.push(Token { text: ws, color: foreground, bold: false });
+                tokens.push(Token {
+                    text: ws,
+                    color: foreground,
+                    bold: false,
+                });
                 continue;
             }
             if ch == '"' {
                 let mut j = i + 1;
                 while j < chars.len() && chars[j] != '"' {
-                    if chars[j] == '\\' { j += 1; }
+                    if chars[j] == '\\' {
+                        j += 1;
+                    }
                     j += 1;
                 }
                 j += 1;
                 let s: String = chars[i..j.min(chars.len())].iter().collect();
                 let rest: String = chars[j.min(chars.len())..].iter().collect();
                 let is_key = rest.trim_start().starts_with(':');
-                tokens.push(Token { text: s, color: if is_key { key_color } else { string_color }, bold: false });
+                tokens.push(Token {
+                    text: s,
+                    color: if is_key { key_color } else { string_color },
+                    bold: false,
+                });
                 i = j.min(chars.len());
                 continue;
             }
             if ch == '-' || ch.is_ascii_digit() {
                 let mut j = i;
-                if chars[j] == '-' { j += 1; }
-                while j < chars.len() && (chars[j].is_ascii_digit() || chars[j] == '.' || chars[j] == 'e' || chars[j] == 'E' || chars[j] == '+' || chars[j] == '-') {
+                if chars[j] == '-' {
                     j += 1;
                 }
-                tokens.push(Token { text: chars[i..j].iter().collect(), color: number_color, bold: false });
+                while j < chars.len()
+                    && (chars[j].is_ascii_digit()
+                        || chars[j] == '.'
+                        || chars[j] == 'e'
+                        || chars[j] == 'E'
+                        || chars[j] == '+'
+                        || chars[j] == '-')
+                {
+                    j += 1;
+                }
+                tokens.push(Token {
+                    text: chars[i..j].iter().collect(),
+                    color: number_color,
+                    bold: false,
+                });
                 i = j;
                 continue;
             }
             let remaining: String = chars[i..].iter().collect();
             if remaining.starts_with("true") {
-                tokens.push(Token { text: "true".into(), color: boolean_color, bold: false });
-                i += 4; continue;
+                tokens.push(Token {
+                    text: "true".into(),
+                    color: boolean_color,
+                    bold: false,
+                });
+                i += 4;
+                continue;
             }
             if remaining.starts_with("false") {
-                tokens.push(Token { text: "false".into(), color: boolean_color, bold: false });
-                i += 5; continue;
+                tokens.push(Token {
+                    text: "false".into(),
+                    color: boolean_color,
+                    bold: false,
+                });
+                i += 5;
+                continue;
             }
             if remaining.starts_with("null") {
-                tokens.push(Token { text: "null".into(), color: null_color, bold: false });
-                i += 4; continue;
+                tokens.push(Token {
+                    text: "null".into(),
+                    color: null_color,
+                    bold: false,
+                });
+                i += 4;
+                continue;
             }
             if ch == '{' || ch == '}' {
-                if ch == '}' { depth = depth.saturating_sub(1); }
-                tokens.push(Token { text: ch.to_string(), color: bracket_palette[depth % bracket_palette.len()], bold: true });
-                if ch == '{' { depth += 1; }
-                i += 1; continue;
+                if ch == '}' {
+                    depth = depth.saturating_sub(1);
+                }
+                tokens.push(Token {
+                    text: ch.to_string(),
+                    color: bracket_palette[depth % bracket_palette.len()],
+                    bold: true,
+                });
+                if ch == '{' {
+                    depth += 1;
+                }
+                i += 1;
+                continue;
             }
             if ch == '[' || ch == ']' {
-                if ch == ']' { depth = depth.saturating_sub(1); }
-                tokens.push(Token { text: ch.to_string(), color: bracket_palette[depth % bracket_palette.len()], bold: true });
-                if ch == '[' { depth += 1; }
-                i += 1; continue;
+                if ch == ']' {
+                    depth = depth.saturating_sub(1);
+                }
+                tokens.push(Token {
+                    text: ch.to_string(),
+                    color: bracket_palette[depth % bracket_palette.len()],
+                    bold: true,
+                });
+                if ch == '[' {
+                    depth += 1;
+                }
+                i += 1;
+                continue;
             }
             if ch == ':' || ch == ',' {
-                tokens.push(Token { text: ch.to_string(), color: delimiter_color, bold: true });
-                i += 1; continue;
+                tokens.push(Token {
+                    text: ch.to_string(),
+                    color: delimiter_color,
+                    bold: true,
+                });
+                i += 1;
+                continue;
             }
-            tokens.push(Token { text: ch.to_string(), color: foreground, bold: false });
+            tokens.push(Token {
+                text: ch.to_string(),
+                color: foreground,
+                bold: false,
+            });
             i += 1;
         }
         all_lines.push(tokens);
@@ -316,27 +467,53 @@ fn tokenize_json(content: &str, colors: &ExportColors, bracket_colors: &[String]
     all_lines
 }
 
-struct DrawSegment { text: String, color: Rgba<u8>, bold: bool, x: f32 }
+struct DrawSegment {
+    text: String,
+    color: Rgba<u8>,
+    bold: bool,
+    x: f32,
+}
 
-fn layout_lines(token_lines: &[Vec<Token>], content_width: f32, char_w: f32) -> Vec<Vec<DrawSegment>> {
+fn layout_lines(
+    token_lines: &[Vec<Token>],
+    content_width: f32,
+    char_w: f32,
+) -> Vec<Vec<DrawSegment>> {
     let mut result = Vec::new();
     for tokens in token_lines {
-        if tokens.is_empty() { result.push(Vec::new()); continue; }
+        if tokens.is_empty() {
+            result.push(Vec::new());
+            continue;
+        }
         let mut current: Vec<DrawSegment> = Vec::new();
         let mut cx = 0.0f32;
         for token in tokens {
             let tw = token.text.chars().count() as f32 * char_w;
             if cx + tw <= content_width || cx < 0.01 {
-                current.push(DrawSegment { text: token.text.clone(), color: token.color, bold: token.bold, x: cx });
+                current.push(DrawSegment {
+                    text: token.text.clone(),
+                    color: token.color,
+                    bold: token.bold,
+                    x: cx,
+                });
                 cx += tw;
             } else {
                 let mut rem = token.text.as_str();
                 while !rem.is_empty() {
                     let fit = ((content_width - cx) / char_w).floor().max(1.0) as usize;
                     let fit = fit.min(rem.chars().count());
-                    let boundary = rem.char_indices().nth(fit).map(|(i, _)| i).unwrap_or(rem.len());
+                    let boundary = rem
+                        .char_indices()
+                        .nth(fit)
+                        .map(|(i, _)| i)
+                        .unwrap_or(rem.len());
                     let part = &rem[..boundary];
-                    current.push(DrawSegment { text: part.to_string(), color: token.color, bold: token.bold, x: cx });
+                    current.push(DrawSegment {
+                        text: part.to_string(),
+                        color: token.color,
+                        bold: token.bold,
+                        x: cx,
+                    });
                     cx += part.chars().count() as f32 * char_w;
                     rem = &rem[boundary..];
                     if !rem.is_empty() {
@@ -352,21 +529,38 @@ fn layout_lines(token_lines: &[Vec<Token>], content_width: f32, char_w: f32) -> 
     result
 }
 
-fn overlay_cached_icon(buf: &mut [u8], stride: usize, img_w: u32, img_h: u32, icon_rgba: &[u8], icon_size: u32, x: u32, y: u32) {
+fn overlay_cached_icon(
+    buf: &mut [u8],
+    stride: usize,
+    img_w: u32,
+    img_h: u32,
+    icon_rgba: &[u8],
+    icon_size: u32,
+    x: u32,
+    y: u32,
+) {
     for py in 0..icon_size {
         let iy = y + py;
-        if iy >= img_h { break; }
+        if iy >= img_h {
+            break;
+        }
         for px in 0..icon_size {
             let ix = x + px;
-            if ix >= img_w { continue; }
+            if ix >= img_w {
+                continue;
+            }
             let src_idx = ((py * icon_size + px) * 4) as usize;
             let fa = icon_rgba[src_idx + 3] as u32;
-            if fa == 0 { continue; }
+            if fa == 0 {
+                continue;
+            }
             let inv = 255 - fa;
             let dst = (iy as usize * stride) + (ix as usize * 3);
-            buf[dst]     = ((icon_rgba[src_idx] as u32 * fa + buf[dst] as u32 * inv) / 255) as u8;
-            buf[dst + 1] = ((icon_rgba[src_idx + 1] as u32 * fa + buf[dst + 1] as u32 * inv) / 255) as u8;
-            buf[dst + 2] = ((icon_rgba[src_idx + 2] as u32 * fa + buf[dst + 2] as u32 * inv) / 255) as u8;
+            buf[dst] = ((icon_rgba[src_idx] as u32 * fa + buf[dst] as u32 * inv) / 255) as u8;
+            buf[dst + 1] =
+                ((icon_rgba[src_idx + 1] as u32 * fa + buf[dst + 1] as u32 * inv) / 255) as u8;
+            buf[dst + 2] =
+                ((icon_rgba[src_idx + 2] as u32 * fa + buf[dst + 2] as u32 * inv) / 255) as u8;
         }
     }
 }
@@ -379,10 +573,10 @@ pub async fn export_json_image(request: ExportRequest) -> Result<String, String>
 }
 
 fn generate_image(request: ExportRequest) -> Result<String, String> {
-    let font_regular = FontRef::try_from_slice(FONT_REGULAR)
-        .map_err(|e| format!("Failed to load font: {}", e))?;
-    let font_bold = FontRef::try_from_slice(FONT_BOLD)
-        .map_err(|e| format!("Failed to load font: {}", e))?;
+    let font_regular =
+        FontRef::try_from_slice(FONT_REGULAR).map_err(|e| format!("Failed to load font: {}", e))?;
+    let font_bold =
+        FontRef::try_from_slice(FONT_BOLD).map_err(|e| format!("Failed to load font: {}", e))?;
 
     let font_size_px = request.font_size.unwrap_or(14.0).max(12.0);
     let line_height_px = request.line_height.unwrap_or(22.0).max(font_size_px * 1.5);
@@ -399,15 +593,26 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
     let max_content_w = (MAX_WIDTH - pad.1 - pad.3) as f32;
     let all_draw_lines = layout_lines(&token_lines, max_content_w, cache.advance);
 
-    let max_line_chars: f32 = all_draw_lines.iter().map(|segs| {
-        segs.last().map(|s| s.x + s.text.chars().count() as f32 * cache.advance).unwrap_or(0.0)
-    }).fold(0.0f32, f32::max);
+    let max_line_chars: f32 = all_draw_lines
+        .iter()
+        .map(|segs| {
+            segs.last()
+                .map(|s| s.x + s.text.chars().count() as f32 * cache.advance)
+                .unwrap_or(0.0)
+        })
+        .fold(0.0f32, f32::max);
 
     let wm = get_watermark(request.is_dark);
-    let wm_min_w = wm.icon_size as f32 + wm.font_size * 0.4 + 10.0 * wm.glyph_cache.advance_bold + wm.font_size * 1.5 + pad.3 as f32;
+    let wm_min_w = wm.icon_size as f32
+        + wm.font_size * 0.4
+        + 10.0 * wm.glyph_cache.advance_bold
+        + wm.font_size * 1.5
+        + pad.3 as f32;
 
     let fit_width = (max_line_chars + pad.1 as f32 + pad.3 as f32).ceil() as u32;
-    let canvas_width = fit_width.max(wm_min_w.ceil() as u32).clamp(MIN_WIDTH, MAX_WIDTH);
+    let canvas_width = fit_width
+        .max(wm_min_w.ceil() as u32)
+        .clamp(MIN_WIDTH, MAX_WIDTH);
 
     let content_width = (canvas_width - pad.1 - pad.3) as f32;
     let all_draw_lines = if canvas_width < MAX_WIDTH {
@@ -418,12 +623,21 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
 
     const MAX_LINES: usize = 2000;
     let truncated = all_draw_lines.len() > MAX_LINES;
-    let visible_lines = if truncated { MAX_LINES } else { all_draw_lines.len() };
+    let visible_lines = if truncated {
+        MAX_LINES
+    } else {
+        all_draw_lines.len()
+    };
     let draw_lines = &all_draw_lines[..visible_lines];
-    let truncation_bar_h: u32 = if truncated { (line_height_px * 2.0).round() as u32 } else { 0 };
+    let truncation_bar_h: u32 = if truncated {
+        (line_height_px * 2.0).round() as u32
+    } else {
+        0
+    };
     let remaining_lines = all_draw_lines.len() - visible_lines;
 
-    let logical_h = pad.0 + (visible_lines as u32 * line_height_px as u32) + truncation_bar_h + pad.2;
+    let logical_h =
+        pad.0 + (visible_lines as u32 * line_height_px as u32) + truncation_bar_h + pad.2;
 
     // Adaptive scale factor based on total pixel count
     // <= 2M logical pixels -> 2x; >= 10M -> 1x; linear in between
@@ -460,8 +674,12 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
     } else {
         let mut b = Vec::with_capacity(buf_len);
         let mut row_buf = Vec::with_capacity(stride);
-        for _ in 0..render_w as usize { row_buf.extend_from_slice(&[bg[0], bg[1], bg[2]]); }
-        for _ in 0..render_h { b.extend_from_slice(&row_buf); }
+        for _ in 0..render_w as usize {
+            row_buf.extend_from_slice(&[bg[0], bg[1], bg[2]]);
+        }
+        for _ in 0..render_h {
+            b.extend_from_slice(&row_buf);
+        }
         b
     };
 
@@ -473,10 +691,24 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
     for line_segs in draw_lines {
         let text_y = y + (render_line_height - render_font_size) / 2.0;
         for seg in line_segs {
-            if seg.text.is_empty() { continue; }
+            if seg.text.is_empty() {
+                continue;
+            }
             let font = if seg.bold { &font_bold } else { &font_regular };
             let rx = render_pad.1 as f32 + seg.x * char_ratio;
-            draw_cached_text(&mut buf, stride, img_w, img_h, &render_cache, &seg.text, rx, text_y, seg.color, seg.bold, font);
+            draw_cached_text(
+                &mut buf,
+                stride,
+                img_w,
+                img_h,
+                &render_cache,
+                &seg.text,
+                rx,
+                text_y,
+                seg.color,
+                seg.bold,
+                font,
+            );
         }
         y += render_line_height;
     }
@@ -485,11 +717,27 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
         let bar_y = render_pad.0 as f32 + visible_lines as f32 * render_line_height;
         let render_trunc_h = truncation_bar_h as f32 * sf;
         let hint_text = format!("... {} more lines not shown ...", remaining_lines);
-        let hint_color = if request.is_dark { Rgba([180, 180, 180, 200]) } else { Rgba([100, 100, 100, 200]) };
+        let hint_color = if request.is_dark {
+            Rgba([180, 180, 180, 200])
+        } else {
+            Rgba([100, 100, 100, 200])
+        };
         let hint_w = hint_text.chars().count() as f32 * render_cache.advance;
         let hint_x = ((render_w as f32 - hint_w) / 2.0).round();
         let hint_y = bar_y + (render_trunc_h - render_font_size) / 2.0;
-        draw_cached_text(&mut buf, stride, img_w, img_h, &render_cache, &hint_text, hint_x, hint_y, hint_color, false, &font_regular);
+        draw_cached_text(
+            &mut buf,
+            stride,
+            img_w,
+            img_h,
+            &render_cache,
+            &hint_text,
+            hint_x,
+            hint_y,
+            hint_color,
+            false,
+            &font_regular,
+        );
     }
 
     let wm_gap = (wm.font_size * 0.4).round();
@@ -509,7 +757,12 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
     let wm_icon_size = (wm.icon_size as f32 * wm_sf).round() as u32;
     let wm_icon_rgba = if wm_sf > 1.01 {
         let icon = image::load_from_memory(ICON_PNG).unwrap();
-        let resized = image::imageops::resize(&icon.to_rgba8(), wm_icon_size, wm_icon_size, image::imageops::FilterType::Triangle);
+        let resized = image::imageops::resize(
+            &icon.to_rgba8(),
+            wm_icon_size,
+            wm_icon_size,
+            image::imageops::FilterType::Triangle,
+        );
         resized.into_raw()
     } else {
         wm.icon_rgba.clone()
@@ -520,7 +773,9 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
 
     let x_right = render_w as f32 - wm_pad_right;
     let text_x = (x_right - wm_text_w).round();
-    let icon_x = (text_x - wm_gap * wm_sf - wm_icon_size as f32).round().max(0.0) as u32;
+    let icon_x = (text_x - wm_gap * wm_sf - wm_icon_size as f32)
+        .round()
+        .max(0.0) as u32;
 
     let ascent = wm_render_cache.ascent;
     let icon_h = wm_icon_size as f32;
@@ -538,8 +793,29 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
     let glyph_center = (glyph_top + glyph_bottom) / 2.0;
     let icon_y = (glyph_center - icon_h / 2.0).round().max(0.0) as u32;
 
-    overlay_cached_icon(&mut buf, stride, render_w, render_h, &wm_icon_rgba, wm_icon_size, icon_x, icon_y);
-    draw_cached_text(&mut buf, stride, img_w, img_h, &wm_render_cache, "JsonStudio", text_x, text_y, wm_color, true, &font_bold);
+    overlay_cached_icon(
+        &mut buf,
+        stride,
+        render_w,
+        render_h,
+        &wm_icon_rgba,
+        wm_icon_size,
+        icon_x,
+        icon_y,
+    );
+    draw_cached_text(
+        &mut buf,
+        stride,
+        img_w,
+        img_h,
+        &wm_render_cache,
+        "JsonStudio",
+        text_x,
+        text_y,
+        wm_color,
+        true,
+        &font_bold,
+    );
 
     let compression = if buf_len < 6_000_000 {
         png::Compression::High
@@ -554,9 +830,11 @@ fn generate_image(request: ExportRequest) -> Result<String, String> {
         encoder.set_depth(png::BitDepth::Eight);
         encoder.set_compression(compression);
         encoder.set_filter(png::Filter::Up);
-        let mut writer = encoder.write_header()
+        let mut writer = encoder
+            .write_header()
             .map_err(|e| format!("PNG header failed: {}", e))?;
-        writer.write_image_data(&buf)
+        writer
+            .write_image_data(&buf)
             .map_err(|e| format!("PNG write failed: {}", e))?;
     }
 

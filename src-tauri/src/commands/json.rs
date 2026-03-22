@@ -14,21 +14,21 @@ use serde_json::Value;
 /// Validation result
 #[derive(Serialize, Deserialize)]
 pub struct ValidationResult {
-    pub valid: bool,           // Whether JSON is valid
-    pub error_message: Option<String>,  // Error message
-    pub error_line: Option<usize>,      // Error line number (1-based)
-    pub error_column: Option<usize>,    // Error column number (1-based)
+    pub valid: bool,                   // Whether JSON is valid
+    pub error_message: Option<String>, // Error message
+    pub error_line: Option<usize>,     // Error line number (1-based)
+    pub error_column: Option<usize>,   // Error column number (1-based)
 }
 
 /// JSON statistics
 #[derive(Serialize, Deserialize)]
 pub struct JsonStats {
-    pub valid: bool,           // Whether JSON is valid
-    pub key_count: usize,      // Number of keys
-    pub depth: usize,          // Maximum nesting depth
-    pub byte_size: usize,      // Byte size
-    pub format_type: String,   // Format type: "JSON" or "JSON5"
-    pub error_info: Option<ValidationResult>,  // Error info (if invalid)
+    pub valid: bool,                          // Whether JSON is valid
+    pub key_count: usize,                     // Number of keys
+    pub depth: usize,                         // Maximum nesting depth
+    pub byte_size: usize,                     // Byte size
+    pub format_type: String,                  // Format type: "JSON" or "JSON5"
+    pub error_info: Option<ValidationResult>, // Error info (if invalid)
 }
 
 /// Format JSON string (supports JSON5)
@@ -50,8 +50,7 @@ pub fn json_format(content: &str, indent: Option<usize>) -> Result<String, Strin
 #[tauri::command]
 pub fn json_minify(content: &str) -> Result<String, String> {
     let value: Value = parse_to_value(content)?;
-    serde_json::to_string(&value)
-        .map_err(|e| format!("JSON minification error: {}", e))
+    serde_json::to_string(&value).map_err(|e| format!("JSON minification error: {}", e))
 }
 
 /// Validate JSON and return detailed error location (supports JSON5)
@@ -159,80 +158,130 @@ pub fn json_escape(content: &str) -> String {
 /// Extract all valid JSON fragments from a mixed text string
 #[tauri::command]
 pub fn extract_json_fragments(content: &str) -> Result<Vec<String>, String> {
+    // Safety guard: prevent runaway extraction on pathological inputs.
+    const MAX_FRAGMENTS: usize = 1000;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Mode {
+        Code,
+        String { quote: char, escape_next: bool },
+        LineComment,
+        BlockComment,
+    }
+
     let mut fragments: Vec<String> = Vec::new();
     let chars: Vec<char> = content.chars().collect();
     let len = chars.len();
 
-    for start_pos in 0..len {
-        // Only start from { or [
-        if chars[start_pos] != '{' && chars[start_pos] != '[' {
-            continue;
-        }
+    let mut mode = Mode::Code;
+    let mut stack: Vec<char> = Vec::new();
+    let mut fragment_start: Option<usize> = None;
 
-        let mut stack: Vec<char> = Vec::new();
-        let mut in_string = false;
-        let mut escape_next = false;
-        let mut end_pos = start_pos;
+    let mut i = 0;
+    while i < len {
+        let ch = chars[i];
+        match mode {
+            Mode::Code => {
+                // Enter string
+                if ch == '"' || ch == '\'' {
+                    mode = Mode::String {
+                        quote: ch,
+                        escape_next: false,
+                    };
+                    i += 1;
+                    continue;
+                }
 
-        for i in start_pos..len {
-            let ch = chars[i];
+                // Enter comment (JSON5 supports both).
+                if ch == '/' && i + 1 < len {
+                    let next = chars[i + 1];
+                    if next == '/' {
+                        mode = Mode::LineComment;
+                        i += 2;
+                        continue;
+                    }
+                    if next == '*' {
+                        mode = Mode::BlockComment;
+                        i += 2;
+                        continue;
+                    }
+                }
 
-            if escape_next {
-                escape_next = false;
-                end_pos = i;
-                continue;
-            }
-
-            if ch == '\\' && in_string {
-                escape_next = true;
-                end_pos = i;
-                continue;
-            }
-
-            if ch == '"' && !escape_next {
-                in_string = !in_string;
-                end_pos = i;
-                continue;
-            }
-
-            if !in_string {
+                // Track brackets only in code.
                 if ch == '{' || ch == '[' {
+                    if stack.is_empty() {
+                        fragment_start = Some(i);
+                    }
                     stack.push(ch);
-                } else if ch == '}' {
-                    if stack.is_empty() || stack.pop() != Some('{') {
-                        break;
-                    }
-                } else if ch == ']' {
-                    if stack.is_empty() || stack.pop() != Some('[') {
-                        break;
-                    }
+                    i += 1;
+                    continue;
                 }
 
-                if stack.is_empty() {
-                    end_pos = i;
-                    break;
+                if ch == '}' || ch == ']' {
+                    let expected_open = if ch == '}' { '{' } else { '[' };
+                    if stack.last().copied() == Some(expected_open) {
+                        stack.pop();
+                        if stack.is_empty() {
+                            if let Some(start) = fragment_start {
+                                let fragment: String = chars[start..=i].iter().collect();
+                                if let Ok(v) = parse_to_value(&fragment) {
+                                    let formatted =
+                                        serde_json::to_string(&v).unwrap_or_else(|_| fragment);
+                                    fragments.push(formatted);
+                                    if fragments.len() >= MAX_FRAGMENTS {
+                                        break;
+                                    }
+                                }
+                            }
+                            fragment_start = None;
+                        }
+                    } else {
+                        // Mismatch: resync. This usually means the input isn't a valid JSON-like
+                        // structure at the current depth.
+                        stack.clear();
+                        fragment_start = None;
+                    }
+                    i += 1;
+                    continue;
                 }
             }
-
-            end_pos = i;
+            Mode::String {
+                quote,
+                mut escape_next,
+            } => {
+                if escape_next {
+                    escape_next = false;
+                    mode = Mode::String { quote, escape_next };
+                    i += 1;
+                    continue;
+                }
+                if ch == '\\' {
+                    escape_next = true;
+                    mode = Mode::String { quote, escape_next };
+                    i += 1;
+                    continue;
+                }
+                if ch == quote {
+                    mode = Mode::Code;
+                    i += 1;
+                    continue;
+                }
+                mode = Mode::String { quote, escape_next };
+            }
+            Mode::LineComment => {
+                if ch == '\n' {
+                    mode = Mode::Code;
+                }
+            }
+            Mode::BlockComment => {
+                if ch == '*' && i + 1 < len && chars[i + 1] == '/' {
+                    mode = Mode::Code;
+                    i += 2;
+                    continue;
+                }
+            }
         }
-
-        // Try to parse the fragment
-        let fragment: String = chars[start_pos..=end_pos].iter().collect();
-
-        // Try serde_json first
-        if let Ok(v) = serde_json::from_str::<Value>(&fragment) {
-            let formatted = serde_json::to_string(&v).unwrap_or(fragment.clone());
-            fragments.push(formatted);
-            continue;
-        }
-
-        // Try json5 as fallback
-        if let Ok(v) = json5::from_str::<Value>(&fragment) {
-            let formatted = serde_json::to_string(&v).unwrap_or(fragment.clone());
-            fragments.push(formatted);
-            continue;
-        }
+        i += 1;
     }
 
     Ok(fragments)
@@ -261,8 +310,7 @@ fn parse_to_value(content: &str) -> Result<Value, String> {
         return Ok(v);
     }
     let sanitized = sanitize_json5_special_values(content);
-    json5::from_str::<Value>(&sanitized)
-        .map_err(|e| format!("JSON/JSON5 parsing error: {}", e))
+    json5::from_str::<Value>(&sanitized).map_err(|e| format!("JSON/JSON5 parsing error: {}", e))
 }
 
 /// Replace JSON5 special numeric literals (Infinity, -Infinity, +Infinity, NaN)
@@ -378,6 +426,78 @@ fn format_error_description(e: &serde_json::Error) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_json_values(fragments: Vec<String>) -> Vec<Value> {
+        fragments
+            .into_iter()
+            .map(|s| serde_json::from_str::<Value>(&s).expect("fragment should be valid JSON"))
+            .collect()
+    }
+
+    #[test]
+    fn extract_top_level_two_objects() {
+        let input = r#"foo {"a":1} bar {"b":2} baz"#;
+        let fragments = extract_json_fragments(input).unwrap();
+        let values = parse_json_values(fragments);
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0], serde_json::json!({"a": 1}));
+        assert_eq!(values[1], serde_json::json!({"b": 2}));
+    }
+
+    #[test]
+    fn ignore_brackets_inside_single_quoted_string_json5() {
+        let input = "prefix {a:'text { } [ ]', b:2} suffix";
+        let fragments = extract_json_fragments(input).unwrap();
+        let values = parse_json_values(fragments);
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0]["a"], Value::String("text { } [ ]".to_string()));
+        assert_eq!(values[0]["b"], Value::from(2));
+    }
+
+    #[test]
+    fn ignore_brackets_inside_comments() {
+        let input = "/* { not real } */ {\"a\":1} // [not real]\n{\"b\":2}";
+        let fragments = extract_json_fragments(input).unwrap();
+        let values = parse_json_values(fragments);
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0], serde_json::json!({"a": 1}));
+        assert_eq!(values[1], serde_json::json!({"b": 2}));
+    }
+
+    #[test]
+    fn allow_block_comment_inside_fragment_json5() {
+        let input = "{a:1, /* comment with } [ ] */ b:2}";
+        let fragments = extract_json_fragments(input).unwrap();
+        let values = parse_json_values(fragments);
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0], serde_json::json!({"a": 1, "b": 2}));
+    }
+
+    #[test]
+    fn sanitize_infinity_and_nan_tokens() {
+        let input = "{a: Infinity, b: NaN, c: -Infinity, d: +Infinity}";
+        let fragments = extract_json_fragments(input).unwrap();
+        let values = parse_json_values(fragments);
+        assert_eq!(values.len(), 1);
+        assert_eq!(
+            values[0],
+            serde_json::json!({"a": null, "b": null, "c": null, "d": null})
+        );
+    }
+
+    #[test]
+    fn ignore_closing_brace_inside_escaped_double_quoted_string() {
+        let input = r#"{"a":"quote: \" and brace: } and slash: \\ and bracket: ]","b":1}"#;
+        let fragments = extract_json_fragments(input).unwrap();
+        let values = parse_json_values(fragments);
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0]["b"], Value::from(1));
+    }
+}
+
 fn count_keys(value: &Value) -> usize {
     match value {
         Value::Object(map) => {
@@ -394,12 +514,8 @@ fn count_keys(value: &Value) -> usize {
 
 fn calculate_depth(value: &Value) -> usize {
     match value {
-        Value::Object(map) => {
-            1 + map.values().map(calculate_depth).max().unwrap_or(0)
-        }
-        Value::Array(arr) => {
-            1 + arr.iter().map(calculate_depth).max().unwrap_or(0)
-        }
+        Value::Object(map) => 1 + map.values().map(calculate_depth).max().unwrap_or(0),
+        Value::Array(arr) => 1 + arr.iter().map(calculate_depth).max().unwrap_or(0),
         _ => 0,
     }
 }

@@ -6,7 +6,8 @@ use tauri_plugin_dialog::DialogExt;
 /// Open a JSON file using file picker dialog
 #[tauri::command]
 pub async fn open_file_dialog(app: AppHandle) -> Result<Option<(String, String)>, String> {
-    let file_path = app.dialog()
+    let file_path = app
+        .dialog()
         .file()
         .add_filter("JSON Files", &["json"])
         .add_filter("All Files", &["*"])
@@ -36,7 +37,8 @@ pub async fn save_file(path: String, content: String) -> Result<(), String> {
 /// Save content to a new file using save dialog
 #[tauri::command]
 pub async fn save_file_dialog(app: AppHandle, content: String) -> Result<Option<String>, String> {
-    let file_path = app.dialog()
+    let file_path = app
+        .dialog()
         .file()
         .add_filter("JSON Files", &["json"])
         .add_filter("All Files", &["*"])

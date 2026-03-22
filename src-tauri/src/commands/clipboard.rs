@@ -12,7 +12,10 @@ pub async fn copy_image_to_clipboard(png_base64: String) -> Result<(), String> {
 
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
-pub async fn copy_image_to_clipboard(app: tauri::AppHandle, png_base64: String) -> Result<(), String> {
+pub async fn copy_image_to_clipboard(
+    app: tauri::AppHandle,
+    png_base64: String,
+) -> Result<(), String> {
     let image_bytes = base64::engine::general_purpose::STANDARD
         .decode(&png_base64)
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
@@ -25,8 +28,8 @@ fn write_image_to_clipboard(image_bytes: &[u8]) -> Result<(), String> {
     use cocoa::appkit::NSPasteboard;
     use cocoa::base::{id, nil};
     use cocoa::foundation::{NSArray, NSData, NSString};
-    use objc::{msg_send, sel, sel_impl};
     use objc::rc::autoreleasepool;
+    use objc::{msg_send, sel, sel_impl};
 
     let is_png = image_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]);
     let uti = if is_png { "public.png" } else { "public.jpeg" };
@@ -43,10 +46,7 @@ fn write_image_to_clipboard(image_bytes: &[u8]) -> Result<(), String> {
                 image_bytes.len() as u64,
             );
 
-            pasteboard.declareTypes_owner(
-                NSArray::arrayWithObject(nil, ns_type),
-                nil,
-            );
+            pasteboard.declareTypes_owner(NSArray::arrayWithObject(nil, ns_type), nil);
 
             let success: bool = msg_send![pasteboard, setData: ns_data forType: ns_type];
 

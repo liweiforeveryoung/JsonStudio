@@ -3,16 +3,13 @@ use std::collections::HashSet;
 
 #[tauri::command]
 pub fn json_to_yaml(content: &str) -> Result<String, String> {
-    let value: Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
-    serde_yaml::to_string(&value)
-        .map_err(|e| format!("YAML conversion failed: {}", e))
+    let value: Value = serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
+    serde_yaml::to_string(&value).map_err(|e| format!("YAML conversion failed: {}", e))
 }
 
 #[tauri::command]
 pub fn json_to_toml(content: &str) -> Result<String, String> {
-    let value: Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let value: Value = serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     // TOML requires a top-level table; wrap arrays automatically
     let table_value = match &value {
@@ -27,14 +24,12 @@ pub fn json_to_toml(content: &str) -> Result<String, String> {
         }
     };
 
-    toml::to_string_pretty(&table_value)
-        .map_err(|e| format!("TOML conversion failed: {}", e))
+    toml::to_string_pretty(&table_value).map_err(|e| format!("TOML conversion failed: {}", e))
 }
 
 #[tauri::command]
 pub fn json_to_xml(content: &str) -> Result<String, String> {
-    let value: Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let value: Value = serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     value_to_xml(&value, "root", &mut xml, 0);
@@ -100,8 +95,7 @@ fn escape_xml(s: &str) -> String {
 
 #[tauri::command]
 pub fn json_to_csv(content: &str) -> Result<String, String> {
-    let value: Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let value: Value = serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     let arr = match &value {
         Value::Array(arr) => arr.clone(),
@@ -131,18 +125,21 @@ pub fn json_to_csv(content: &str) -> Result<String, String> {
     }
 
     let mut wtr = csv::Writer::from_writer(Vec::new());
-    wtr.write_record(&headers).map_err(|e| format!("CSV error: {}", e))?;
+    wtr.write_record(&headers)
+        .map_err(|e| format!("CSV error: {}", e))?;
 
     for item in &arr {
         if let Value::Object(map) = item {
-            let row: Vec<String> = headers.iter().map(|h| {
-                match map.get(h) {
+            let row: Vec<String> = headers
+                .iter()
+                .map(|h| match map.get(h) {
                     Some(Value::String(s)) => s.clone(),
                     Some(Value::Null) | None => String::new(),
                     Some(v) => v.to_string(),
-                }
-            }).collect();
-            wtr.write_record(&row).map_err(|e| format!("CSV error: {}", e))?;
+                })
+                .collect();
+            wtr.write_record(&row)
+                .map_err(|e| format!("CSV error: {}", e))?;
         }
     }
 
@@ -156,25 +153,20 @@ pub fn json_to_csv(content: &str) -> Result<String, String> {
 
 #[tauri::command]
 pub fn yaml_to_json(content: &str) -> Result<String, String> {
-    let value: Value = serde_yaml::from_str(content)
-        .map_err(|e| format!("Invalid YAML: {}", e))?;
-    serde_json::to_string_pretty(&value)
-        .map_err(|e| format!("JSON conversion failed: {}", e))
+    let value: Value = serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
+    serde_json::to_string_pretty(&value).map_err(|e| format!("JSON conversion failed: {}", e))
 }
 
 #[tauri::command]
 pub fn toml_to_json(content: &str) -> Result<String, String> {
-    let value: Value = toml::from_str(content)
-        .map_err(|e| format!("Invalid TOML: {}", e))?;
-    serde_json::to_string_pretty(&value)
-        .map_err(|e| format!("JSON conversion failed: {}", e))
+    let value: Value = toml::from_str(content).map_err(|e| format!("Invalid TOML: {}", e))?;
+    serde_json::to_string_pretty(&value).map_err(|e| format!("JSON conversion failed: {}", e))
 }
 
 #[tauri::command]
 pub fn xml_to_json(content: &str) -> Result<String, String> {
     let value = parse_xml_to_value(content)?;
-    serde_json::to_string_pretty(&value)
-        .map_err(|e| format!("JSON conversion failed: {}", e))
+    serde_json::to_string_pretty(&value).map_err(|e| format!("JSON conversion failed: {}", e))
 }
 
 fn parse_xml_to_value(xml_str: &str) -> Result<Value, String> {
@@ -217,22 +209,26 @@ fn parse_xml_to_value(xml_str: &str) -> Result<Value, String> {
                     .to_string();
                 if !text.is_empty() {
                     if let Some(parent) = stack.last_mut() {
-                        parent.1.push(("__text__".to_string(), text_to_typed_value(&text)));
+                        parent
+                            .1
+                            .push(("__text__".to_string(), text_to_typed_value(&text)));
                     }
                 }
             }
             Ok(Event::Eof) => break,
-            Ok(Event::Decl(_)) | Ok(Event::Comment(_)) | Ok(Event::PI(_))
-            | Ok(Event::CData(_)) | Ok(Event::DocType(_)) | Ok(Event::GeneralRef(_)) => {}
+            Ok(Event::Decl(_))
+            | Ok(Event::Comment(_))
+            | Ok(Event::PI(_))
+            | Ok(Event::CData(_))
+            | Ok(Event::DocType(_))
+            | Ok(Event::GeneralRef(_)) => {}
             Err(e) => return Err(format!("Invalid XML: {}", e)),
         }
     }
 
     // Unwrap the root element to return its content directly
     match root_value {
-        Some(Value::Object(map)) if map.len() == 1 => {
-            Ok(map.into_iter().next().unwrap().1)
-        }
+        Some(Value::Object(map)) if map.len() == 1 => Ok(map.into_iter().next().unwrap().1),
         Some(v) => Ok(v),
         None => Err("Empty XML document".into()),
     }
@@ -265,9 +261,8 @@ fn children_to_value(children: Vec<(String, Value)>) -> Value {
         return children[0].1.clone();
     }
     // Filter out text nodes when mixed with elements
-    let element_children: Vec<&(String, Value)> = children.iter()
-        .filter(|(k, _)| k != "__text__")
-        .collect();
+    let element_children: Vec<&(String, Value)> =
+        children.iter().filter(|(k, _)| k != "__text__").collect();
     if element_children.is_empty() {
         if let Some((_, v)) = children.first() {
             return v.clone();
@@ -292,7 +287,9 @@ fn children_to_value(children: Vec<(String, Value)>) -> Value {
 
     for (tag, value) in element_children {
         if array_tags.contains(tag.as_str()) {
-            let entry = map.entry(tag.clone()).or_insert_with(|| Value::Array(vec![]));
+            let entry = map
+                .entry(tag.clone())
+                .or_insert_with(|| Value::Array(vec![]));
             if let Value::Array(arr) = entry {
                 arr.push(value.clone());
             }
@@ -310,7 +307,8 @@ pub fn csv_to_json(content: &str) -> Result<String, String> {
         .has_headers(true)
         .from_reader(content.as_bytes());
 
-    let headers: Vec<String> = rdr.headers()
+    let headers: Vec<String> = rdr
+        .headers()
         .map_err(|e| format!("CSV header error: {}", e))?
         .iter()
         .map(|h| h.to_string())

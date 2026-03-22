@@ -8,7 +8,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 pub struct FileWatcherState {
-    watchers: Arc<Mutex<HashMap<String, notify_debouncer_mini::Debouncer<notify::RecommendedWatcher>>>>,
+    watchers:
+        Arc<Mutex<HashMap<String, notify_debouncer_mini::Debouncer<notify::RecommendedWatcher>>>>,
 }
 
 impl FileWatcherState {
@@ -27,7 +28,7 @@ pub async fn watch_file(
     state: tauri::State<'_, FileWatcherState>,
 ) -> Result<(), String> {
     let path_buf = PathBuf::from(&path);
-    
+
     // Check if already watching
     {
         let watchers = state.watchers.lock().unwrap();
@@ -35,10 +36,10 @@ pub async fn watch_file(
             return Ok(());
         }
     }
-    
+
     let app_clone = app.clone();
     let path_clone = path.clone();
-    
+
     // Create debounced watcher
     let mut debouncer = new_debouncer(
         Duration::from_millis(500),
@@ -57,18 +58,19 @@ pub async fn watch_file(
                 }
             }
         },
-    ).map_err(|e| format!("Failed to create watcher: {}", e))?;
-    
+    )
+    .map_err(|e| format!("Failed to create watcher: {}", e))?;
+
     // Watch the file
     debouncer
         .watcher()
         .watch(&path_buf, RecursiveMode::NonRecursive)
         .map_err(|e| format!("Failed to watch file: {}", e))?;
-    
+
     // Store the watcher
     let mut watchers = state.watchers.lock().unwrap();
     watchers.insert(path.clone(), debouncer);
-    
+
     Ok(())
 }
 
@@ -85,9 +87,7 @@ pub async fn unwatch_file(
 
 /// Stop watching all files
 #[tauri::command]
-pub async fn unwatch_all_files(
-    state: tauri::State<'_, FileWatcherState>,
-) -> Result<(), String> {
+pub async fn unwatch_all_files(state: tauri::State<'_, FileWatcherState>) -> Result<(), String> {
     let mut watchers = state.watchers.lock().unwrap();
     watchers.clear();
     Ok(())

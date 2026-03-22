@@ -4,8 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[tauri::command]
 pub fn json_to_code(content: &str, language: &str, class_name: &str) -> Result<String, String> {
-    let value: Value =
-        serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
+    let value: Value = serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     // Reject non-structural JSON values
     match &value {
@@ -61,7 +60,11 @@ enum JsonType {
     Optional(Box<JsonType>),
 }
 
-fn infer_type(value: &Value, name: &str, structs: &mut BTreeMap<String, BTreeMap<String, JsonType>>) -> JsonType {
+fn infer_type(
+    value: &Value,
+    name: &str,
+    structs: &mut BTreeMap<String, BTreeMap<String, JsonType>>,
+) -> JsonType {
     match value {
         Value::Null => JsonType::Null,
         Value::Bool(_) => JsonType::Boolean,
@@ -140,7 +143,9 @@ fn merge_object_fields(
         if is_optional {
             // Avoid double-wrapping Optional
             match &base_type {
-                JsonType::Null => fields.insert(key.clone(), JsonType::Optional(Box::new(JsonType::Any))),
+                JsonType::Null => {
+                    fields.insert(key.clone(), JsonType::Optional(Box::new(JsonType::Any)))
+                }
                 JsonType::Optional(_) => fields.insert(key.clone(), base_type),
                 _ => fields.insert(key.clone(), JsonType::Optional(Box::new(base_type))),
             };
@@ -173,7 +178,10 @@ fn collect_structs(value: &Value, name: &str) -> CollectResult {
     }
 
     let top_level_type = infer_type(value, name, &mut structs);
-    CollectResult { structs, top_level_type }
+    CollectResult {
+        structs,
+        top_level_type,
+    }
 }
 
 // --- Helpers ---
@@ -195,10 +203,29 @@ fn singularize(s: &str) -> String {
 
     // Common words that end in 's' but are already singular
     const FALSE_PLURALS: &[&str] = &[
-        "address", "status", "class", "bus", "process", "access",
-        "success", "progress", "bonus", "campus", "canvas", "focus",
-        "radius", "virus", "alias", "basis", "crisis", "diagnosis",
-        "analysis", "thesis", "synopsis", "consensus", "corpus",
+        "address",
+        "status",
+        "class",
+        "bus",
+        "process",
+        "access",
+        "success",
+        "progress",
+        "bonus",
+        "campus",
+        "canvas",
+        "focus",
+        "radius",
+        "virus",
+        "alias",
+        "basis",
+        "crisis",
+        "diagnosis",
+        "analysis",
+        "thesis",
+        "synopsis",
+        "consensus",
+        "corpus",
     ];
     if FALSE_PLURALS.iter().any(|w| lower == *w) {
         return format!("{}_item", s);
@@ -206,11 +233,18 @@ fn singularize(s: &str) -> String {
 
     if lower.ends_with("ies") && lower.len() > 4 {
         format!("{}y", &s[..s.len() - 3])
-    } else if lower.ends_with("ses") || lower.ends_with("xes") || lower.ends_with("zes")
-        || lower.ends_with("ches") || lower.ends_with("shes")
+    } else if lower.ends_with("ses")
+        || lower.ends_with("xes")
+        || lower.ends_with("zes")
+        || lower.ends_with("ches")
+        || lower.ends_with("shes")
     {
         s[..s.len() - 2].to_string()
-    } else if lower.ends_with('s') && !lower.ends_with("ss") && !lower.ends_with("us") && !lower.ends_with("is") {
+    } else if lower.ends_with('s')
+        && !lower.ends_with("ss")
+        && !lower.ends_with("us")
+        && !lower.ends_with("is")
+    {
         s[..s.len() - 1].to_string()
     } else {
         format!("{}_item", s)
@@ -264,10 +298,7 @@ fn gen_protobuf(value: &Value, name: &str) -> String {
                     type_str, field_name, field_num
                 ));
             } else {
-                out.push_str(&format!(
-                    "  {} {} = {};\n",
-                    type_str, field_name, field_num
-                ));
+                out.push_str(&format!("  {} {} = {};\n", type_str, field_name, field_num));
             }
         }
         out.push_str("}\n\n");
@@ -299,7 +330,10 @@ fn gen_thrift(value: &Value, name: &str) -> String {
         let wrapper_name = to_pascal_case(name);
         let field_name = to_snake_case(&format!("{}s", name));
         out.push_str(&format!("struct {} {{\n", wrapper_name));
-        out.push_str(&format!("  1: required list<{}> {};\n", item_type, field_name));
+        out.push_str(&format!(
+            "  1: required list<{}> {};\n",
+            item_type, field_name
+        ));
         out.push_str("}\n\n");
     }
     for (sname, fields) in &result.structs {
@@ -334,9 +368,11 @@ fn convert_keys_recursive(value: Value, converter: &dyn Fn(&str) -> String) -> V
             }
             Value::Object(new_map)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(|v| convert_keys_recursive(v, converter)).collect())
-        }
+        Value::Array(arr) => Value::Array(
+            arr.into_iter()
+                .map(|v| convert_keys_recursive(v, converter))
+                .collect(),
+        ),
         other => other,
     }
 }
@@ -347,7 +383,10 @@ fn convert_keys_recursive(value: Value, converter: &dyn Fn(&str) -> String) -> V
 fn convert_fields_only(value: Value, converter: &dyn Fn(&str) -> String) -> Value {
     match &value {
         Value::Object(map) if is_multi_struct_result(map) => {
-            let map = match value { Value::Object(m) => m, _ => unreachable!() };
+            let map = match value {
+                Value::Object(m) => m,
+                _ => unreachable!(),
+            };
             let mut new_map = serde_json::Map::new();
             for (struct_name, fields) in map {
                 new_map.insert(struct_name, convert_keys_recursive(fields, converter));
@@ -359,14 +398,19 @@ fn convert_fields_only(value: Value, converter: &dyn Fn(&str) -> String) -> Valu
 }
 
 fn is_multi_struct_result(map: &serde_json::Map<String, Value>) -> bool {
-    map.len() > 1 && map.values().all(|v| v.is_object())
-        && map.keys().all(|k| k.chars().next().map_or(false, |c| c.is_uppercase()))
+    map.len() > 1
+        && map.values().all(|v| v.is_object())
+        && map
+            .keys()
+            .all(|k| k.chars().next().map_or(false, |c| c.is_uppercase()))
 }
 
 fn parse_code_to_json(content: &str, language: &str, _class_name: &str) -> Result<Value, String> {
     let result = match language {
         "typescript" => parse_typescript_to_json(content),
-        "java" | "kotlin" | "dart" | "php" | "scala" => parse_typed_class_to_json(content, language),
+        "java" | "kotlin" | "dart" | "php" | "scala" => {
+            parse_typed_class_to_json(content, language)
+        }
         "swift" => parse_swift_to_json(content),
         "go" => parse_go_to_json(content),
         "csharp" => parse_typed_class_to_json(content, language),
@@ -383,17 +427,16 @@ fn parse_code_to_json(content: &str, language: &str, _class_name: &str) -> Resul
         "crystal" => parse_crystal_to_json(content),
         "elixir" => parse_elixir_to_json(content),
         "pike" => parse_pike_to_json(content),
-        _ => Err(format!("Unsupported language for reverse conversion: {}", language)),
+        _ => Err(format!(
+            "Unsupported language for reverse conversion: {}",
+            language
+        )),
     }?;
 
     let converted = match language {
-        "rust" | "python" | "cpp" | "ruby" | "protobuf" | "thrift"
-        | "crystal" | "elixir" | "pike" => {
-            convert_fields_only(result, &to_camel_case)
-        }
-        "csharp" | "objectivec" => {
-            convert_fields_only(result, &to_camel_case)
-        }
+        "rust" | "python" | "cpp" | "ruby" | "protobuf" | "thrift" | "crystal" | "elixir"
+        | "pike" => convert_fields_only(result, &to_camel_case),
+        "csharp" | "objectivec" => convert_fields_only(result, &to_camel_case),
         _ => result,
     };
 
@@ -405,15 +448,21 @@ fn default_value_for_type(type_str: &str) -> Value {
     let lower = t.to_lowercase();
 
     // Optional / nullable wrappers
-    if lower.starts_with("optional<") || lower.starts_with("option<") || lower.starts_with("option[")
-        || t.ends_with('?') || lower.starts_with("std::optional<")
+    if lower.starts_with("optional<")
+        || lower.starts_with("option<")
+        || lower.starts_with("option[")
+        || t.ends_with('?')
+        || lower.starts_with("std::optional<")
     {
         return Value::Null;
     }
 
     // Array / list types
-    if lower.starts_with("vec<") || lower.starts_with("list<") || lower.starts_with("list[")
-        || lower.starts_with("[]") || lower.starts_with("array<")
+    if lower.starts_with("vec<")
+        || lower.starts_with("list<")
+        || lower.starts_with("list[")
+        || lower.starts_with("[]")
+        || lower.starts_with("array<")
         || lower.starts_with("std::vector<")
         || (t.starts_with('[') && t.ends_with(']'))
     {
@@ -421,8 +470,11 @@ fn default_value_for_type(type_str: &str) -> Value {
     }
 
     // Map types
-    if lower.starts_with("map<") || lower.starts_with("dict<") || lower.starts_with("hashmap<")
-        || lower.starts_with("btreemap<") || lower.starts_with("std::map<")
+    if lower.starts_with("map<")
+        || lower.starts_with("dict<")
+        || lower.starts_with("hashmap<")
+        || lower.starts_with("btreemap<")
+        || lower.starts_with("std::map<")
         || lower.starts_with("map[")
     {
         return Value::Object(serde_json::Map::new());
@@ -432,19 +484,21 @@ fn default_value_for_type(type_str: &str) -> Value {
         "string" | "str" | "std::string" | "text" | "varchar" | "char" => {
             Value::String(String::new())
         }
-        "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
-        | "int" | "int8" | "int16" | "int32" | "int64"
-        | "long" | "short" | "byte"
-        | "int64_t" | "int32_t" | "bigint" | "integer" | "smallint" | "tinyint" => {
-            Value::Number(serde_json::Number::from(0))
-        }
-        "f32" | "f64" | "float" | "double" | "float32" | "float64" | "real"
-        | "number" | "decimal" | "numeric" => {
-            Value::Number(serde_json::Number::from_f64(0.0).unwrap())
-        }
+        "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "int" | "int8" | "int16"
+        | "int32" | "int64" | "long" | "short" | "byte" | "int64_t" | "int32_t" | "bigint"
+        | "integer" | "smallint" | "tinyint" => Value::Number(serde_json::Number::from(0)),
+        "f32" | "f64" | "float" | "double" | "float32" | "float64" | "real" | "number"
+        | "decimal" | "numeric" => Value::Number(serde_json::Number::from_f64(0.0).unwrap()),
         "bool" | "boolean" => Value::Bool(false),
-        "any" | "object" | "dynamic" | "interface{}" | "mixed" | "json"
-        | "serde_json::value" | "nlohmann::json" | "google.protobuf.any" => Value::Null,
+        "any"
+        | "object"
+        | "dynamic"
+        | "interface{}"
+        | "mixed"
+        | "json"
+        | "serde_json::value"
+        | "nlohmann::json"
+        | "google.protobuf.any" => Value::Null,
         _ => {
             // Likely a nested struct reference
             Value::Object(serde_json::Map::new())
@@ -460,7 +514,11 @@ fn parse_typescript_to_json(content: &str) -> Result<Value, String> {
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("interface ") || trimmed.starts_with("type ") || trimmed.starts_with("export interface ") || trimmed.starts_with("export type ") {
+        if trimmed.starts_with("interface ")
+            || trimmed.starts_with("type ")
+            || trimmed.starts_with("export interface ")
+            || trimmed.starts_with("export type ")
+        {
             if let Some((name, fields)) = current_fields.take() {
                 result.insert(name, Value::Object(fields));
             }
@@ -596,18 +654,28 @@ fn split_params(s: &str) -> Vec<String> {
     let mut current = String::new();
     for c in s.chars() {
         match c {
-            '<' | '(' | '[' => { depth += 1; current.push(c); }
-            '>' | ')' | ']' => { depth -= 1; current.push(c); }
+            '<' | '(' | '[' => {
+                depth += 1;
+                current.push(c);
+            }
+            '>' | ')' | ']' => {
+                depth -= 1;
+                current.push(c);
+            }
             ',' if depth == 0 => {
                 let trimmed = current.trim().to_string();
-                if !trimmed.is_empty() { params.push(trimmed); }
+                if !trimmed.is_empty() {
+                    params.push(trimmed);
+                }
                 current.clear();
             }
             _ => current.push(c),
         }
     }
     let trimmed = current.trim().to_string();
-    if !trimmed.is_empty() { params.push(trimmed); }
+    if !trimmed.is_empty() {
+        params.push(trimmed);
+    }
     params
 }
 
@@ -621,7 +689,11 @@ fn parse_param_field(param: &str) -> Option<(String, String)> {
     // "name: Type" pattern
     if let Some(colon) = clean.find(':') {
         let key = clean[..colon].trim().to_string();
-        let type_str = clean[colon + 1..].trim().trim_end_matches(',').trim().to_string();
+        let type_str = clean[colon + 1..]
+            .trim()
+            .trim_end_matches(',')
+            .trim()
+            .to_string();
         if !key.is_empty() && !type_str.is_empty() {
             return Some((key, type_str));
         }
@@ -640,12 +712,19 @@ fn parse_param_field(param: &str) -> Option<(String, String)> {
 
 fn parse_field_line(line: &str) -> Option<(String, String)> {
     let trimmed = line.trim();
-    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#')
-        || trimmed.starts_with("import ") || trimmed.starts_with("using ")
-        || trimmed.starts_with("package ") || trimmed.starts_with("@")
-        || trimmed.starts_with("public func") || trimmed.starts_with("private func")
-        || trimmed.starts_with("func ") || trimmed.starts_with("def ")
-        || trimmed.starts_with("get ") || trimmed.starts_with("set ")
+    if trimmed.is_empty()
+        || trimmed.starts_with("//")
+        || trimmed.starts_with('#')
+        || trimmed.starts_with("import ")
+        || trimmed.starts_with("using ")
+        || trimmed.starts_with("package ")
+        || trimmed.starts_with("@")
+        || trimmed.starts_with("public func")
+        || trimmed.starts_with("private func")
+        || trimmed.starts_with("func ")
+        || trimmed.starts_with("def ")
+        || trimmed.starts_with("get ")
+        || trimmed.starts_with("set ")
     {
         return None;
     }
@@ -721,7 +800,10 @@ fn parse_rust_to_json(content: &str) -> Result<Value, String> {
                 .replace("pub ", "")
                 .split("struct ")
                 .nth(1)
-                .and_then(|s| s.split(|c: char| c == '{' || c == '<' || c.is_whitespace()).next())
+                .and_then(|s| {
+                    s.split(|c: char| c == '{' || c == '<' || c.is_whitespace())
+                        .next()
+                })
                 .unwrap_or("")
                 .trim()
                 .to_string();
@@ -788,7 +870,9 @@ fn parse_go_to_json(content: &str) -> Result<Value, String> {
                 result.insert(name, Value::Object(fields));
             }
         } else if let Some((_, ref mut fields)) = current_fields {
-            if trimmed.is_empty() || trimmed.starts_with("//") { continue; }
+            if trimmed.is_empty() || trimmed.starts_with("//") {
+                continue;
+            }
             // Go: FieldName Type `json:"key"`
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
             if parts.len() >= 2 {
@@ -796,7 +880,10 @@ fn parse_go_to_json(content: &str) -> Result<Value, String> {
                 // Extract json tag name if present
                 let json_key = if let Some(tag_start) = trimmed.find("`json:\"") {
                     let after = &trimmed[tag_start + 7..];
-                    after.split(|c: char| c == '"' || c == ',').next().unwrap_or(parts[0])
+                    after
+                        .split(|c: char| c == '"' || c == ',')
+                        .next()
+                        .unwrap_or(parts[0])
                 } else {
                     parts[0]
                 };
@@ -842,8 +929,11 @@ fn parse_python_to_json(content: &str) -> Result<Value, String> {
             }
         } else if let Some((_, ref mut fields)) = current_fields {
             // "field_name: type" pattern (dataclass style)
-            if !trimmed.starts_with("def ") && !trimmed.starts_with('@') && !trimmed.starts_with('#')
-                && !trimmed.starts_with("pass") && !trimmed.is_empty()
+            if !trimmed.starts_with("def ")
+                && !trimmed.starts_with('@')
+                && !trimmed.starts_with('#')
+                && !trimmed.starts_with("pass")
+                && !trimmed.is_empty()
             {
                 let clean = trimmed.split('=').next().unwrap_or(trimmed).trim();
                 if let Some(colon) = clean.find(':') {
@@ -901,7 +991,10 @@ fn parse_ruby_to_json(content: &str) -> Result<Value, String> {
                 result.insert(name, Value::Object(fields));
             }
         } else if let Some((_, ref mut fields)) = current_fields {
-            if trimmed.starts_with("attr_accessor") || trimmed.starts_with("attr_reader") || trimmed.starts_with("attr_writer") {
+            if trimmed.starts_with("attr_accessor")
+                || trimmed.starts_with("attr_reader")
+                || trimmed.starts_with("attr_writer")
+            {
                 let attrs_part = trimmed.splitn(2, ' ').nth(1).unwrap_or("");
                 for attr in attrs_part.split(',') {
                     let key = attr.trim().trim_start_matches(':').to_string();
@@ -957,8 +1050,11 @@ fn parse_protobuf_to_json(content: &str) -> Result<Value, String> {
                 result.insert(name, Value::Object(fields));
             }
         } else if let Some((_, ref mut fields)) = current_fields {
-            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("syntax")
-                || trimmed.starts_with("package") || trimmed.starts_with("import")
+            if trimmed.is_empty()
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("syntax")
+                || trimmed.starts_with("package")
+                || trimmed.starts_with("import")
                 || trimmed.starts_with("option")
             {
                 continue;
@@ -1132,8 +1228,12 @@ fn parse_objectivec_to_json(content: &str) -> Result<Value, String> {
                 }
             }
             let rest = &trimmed["@interface ".len()..];
-            let name = rest.split(|c: char| c.is_whitespace() || c == ':' || c == '(')
-                .next().unwrap_or("").trim().to_string();
+            let name = rest
+                .split(|c: char| c.is_whitespace() || c == ':' || c == '(')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 current_name = Some(name);
             }
@@ -1158,7 +1258,11 @@ fn parse_objectivec_to_json(content: &str) -> Result<Value, String> {
             let parts: Vec<&str> = clean.split_whitespace().collect();
             if parts.len() >= 2 {
                 let field_name = parts.last().unwrap().trim_start_matches('*');
-                let type_str = parts[..parts.len() - 1].join(" ").replace('*', "").trim().to_string();
+                let type_str = parts[..parts.len() - 1]
+                    .join(" ")
+                    .replace('*', "")
+                    .trim()
+                    .to_string();
                 current_fields.insert(field_name.to_string(), objc_default_value(&type_str));
             }
         }
@@ -1182,11 +1286,15 @@ fn objc_default_value(type_str: &str) -> Value {
     let t = type_str.trim();
     match t {
         "NSString" => Value::String(String::new()),
-        "NSInteger" | "NSUInteger" | "int" | "long" | "NSNumber" => Value::Number(serde_json::Number::from(0)),
+        "NSInteger" | "NSUInteger" | "int" | "long" | "NSNumber" => {
+            Value::Number(serde_json::Number::from(0))
+        }
         "CGFloat" | "double" | "float" => Value::Number(serde_json::Number::from_f64(0.0).unwrap()),
         "BOOL" => Value::Bool(false),
         _ if t.starts_with("NSArray") || t.starts_with("NSMutableArray") => Value::Array(vec![]),
-        _ if t.starts_with("NSDictionary") || t.starts_with("NSMutableDictionary") => Value::Object(serde_json::Map::new()),
+        _ if t.starts_with("NSDictionary") || t.starts_with("NSMutableDictionary") => {
+            Value::Object(serde_json::Map::new())
+        }
         _ => Value::Object(serde_json::Map::new()),
     }
 }
@@ -1209,14 +1317,21 @@ fn parse_elm_to_json(content: &str) -> Result<Value, String> {
                 }
             }
             let rest = &trimmed["type alias ".len()..];
-            let name = rest.split(|c: char| c.is_whitespace() || c == '=')
-                .next().unwrap_or("").trim().to_string();
+            let name = rest
+                .split(|c: char| c.is_whitespace() || c == '=')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 current_name = Some(name);
             }
         }
         // { fieldName : Type  or  , fieldName : Type
-        if (trimmed.starts_with('{') || trimmed.starts_with(',')) && trimmed.contains(':') && current_name.is_some() {
+        if (trimmed.starts_with('{') || trimmed.starts_with(','))
+            && trimmed.contains(':')
+            && current_name.is_some()
+        {
             let field_part = trimmed.trim_start_matches(['{', ',', ' ']);
             if let Some(colon) = field_part.find(':') {
                 let key = field_part[..colon].trim();
@@ -1276,7 +1391,10 @@ fn parse_haskell_to_json(content: &str) -> Result<Value, String> {
 
         // instance FromJSON ClassName where
         if trimmed.starts_with("instance FromJSON ") && trimmed.ends_with("where") {
-            let name = trimmed["instance FromJSON ".len()..].trim_end_matches("where").trim().to_string();
+            let name = trimmed["instance FromJSON ".len()..]
+                .trim_end_matches("where")
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 in_from_json = true;
                 from_json_name = Some(name);
@@ -1295,7 +1413,10 @@ fn parse_haskell_to_json(content: &str) -> Result<Value, String> {
         }
 
         // End of FromJSON instance (next instance or blank line after fields)
-        if in_from_json && (trimmed.starts_with("instance ToJSON") || (trimmed.is_empty() && !current_fields.is_empty())) {
+        if in_from_json
+            && (trimmed.starts_with("instance ToJSON")
+                || (trimmed.is_empty() && !current_fields.is_empty()))
+        {
             if let Some(name) = from_json_name.take() {
                 result.insert(name, Value::Object(current_fields.clone()));
                 current_fields.clear();
@@ -1306,15 +1427,22 @@ fn parse_haskell_to_json(content: &str) -> Result<Value, String> {
         // data ClassName = ClassName { field :: Type, ... }
         if trimmed.starts_with("data ") && trimmed.contains("=") {
             let rest = &trimmed["data ".len()..];
-            let name = rest.split(|c: char| c.is_whitespace() || c == '=')
-                .next().unwrap_or("").trim().to_string();
+            let name = rest
+                .split(|c: char| c.is_whitespace() || c == '=')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 current_name = Some(name);
             }
         }
 
         // { fieldName :: Type  or  , fieldName :: Type
-        if (trimmed.starts_with('{') || trimmed.starts_with(',')) && trimmed.contains("::") && current_name.is_some() {
+        if (trimmed.starts_with('{') || trimmed.starts_with(','))
+            && trimmed.contains("::")
+            && current_name.is_some()
+        {
             let field_part = trimmed.trim_start_matches(['{', ',', ' ']);
             if let Some(dcolon) = field_part.find("::") {
                 let _key = field_part[..dcolon].trim();
@@ -1392,8 +1520,12 @@ fn parse_crystal_to_json(content: &str) -> Result<Value, String> {
                     current_fields.clear();
                 }
             }
-            let name = trimmed["class ".len()..].split(|c: char| c.is_whitespace() || c == '<')
-                .next().unwrap_or("").trim().to_string();
+            let name = trimmed["class ".len()..]
+                .split(|c: char| c.is_whitespace() || c == '<')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 current_name = Some(name);
             }
@@ -1438,7 +1570,9 @@ fn crystal_default_value(type_str: &str) -> Value {
     match t {
         "String" => Value::String(String::new()),
         "Int32" | "Int64" | "Int" => Value::Number(serde_json::Number::from(0)),
-        "Float32" | "Float64" | "Float" => Value::Number(serde_json::Number::from_f64(0.0).unwrap()),
+        "Float32" | "Float64" | "Float" => {
+            Value::Number(serde_json::Number::from_f64(0.0).unwrap())
+        }
         "Bool" => Value::Bool(false),
         _ if t.starts_with("Array(") => Value::Array(vec![]),
         _ if t.starts_with("Hash(") => Value::Object(serde_json::Map::new()),
@@ -1465,7 +1599,9 @@ fn parse_elixir_to_json(content: &str) -> Result<Value, String> {
                     current_fields.clear();
                 }
             }
-            let name = trimmed["defmodule ".len()..trimmed.len() - 3].trim().to_string();
+            let name = trimmed["defmodule ".len()..trimmed.len() - 3]
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 current_name = Some(name);
                 in_type = false;
@@ -1476,7 +1612,11 @@ fn parse_elixir_to_json(content: &str) -> Result<Value, String> {
             in_type = true;
         }
         // field: Type()  inside @type
-        if in_type && trimmed.contains(':') && !trimmed.starts_with("@") && !trimmed.starts_with("}") {
+        if in_type
+            && trimmed.contains(':')
+            && !trimmed.starts_with("@")
+            && !trimmed.starts_with("}")
+        {
             let clean = trimmed.trim_end_matches([',', ' ']);
             if let Some(colon) = clean.find(':') {
                 let key = clean[..colon].trim();
@@ -1549,16 +1689,24 @@ fn parse_pike_to_json(content: &str) -> Result<Value, String> {
                     current_fields.clear();
                 }
             }
-            let name = trimmed["class ".len()..].split(|c: char| c.is_whitespace() || c == '{')
-                .next().unwrap_or("").trim().to_string();
+            let name = trimmed["class ".len()..]
+                .split(|c: char| c.is_whitespace() || c == '{')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 current_name = Some(name);
             }
         }
         // type  name;  // json: "jsonKey"
-        if current_name.is_some() && !trimmed.starts_with("//") && !trimmed.starts_with("class ")
-            && !trimmed.starts_with("string encode_json") && !trimmed.starts_with("mapping")
-            && !trimmed.starts_with("return ") && !trimmed.starts_with("retval.")
+        if current_name.is_some()
+            && !trimmed.starts_with("//")
+            && !trimmed.starts_with("class ")
+            && !trimmed.starts_with("string encode_json")
+            && !trimmed.starts_with("mapping")
+            && !trimmed.starts_with("return ")
+            && !trimmed.starts_with("retval.")
             && trimmed.contains(';')
         {
             let clean = trimmed.split(';').next().unwrap_or("").trim();
@@ -1573,8 +1721,10 @@ fn parse_pike_to_json(content: &str) -> Result<Value, String> {
                 } else {
                     field_name
                 };
-                if !type_str.is_empty() && !json_key.is_empty()
-                    && !type_str.starts_with("mapping") && !type_str.starts_with("return")
+                if !type_str.is_empty()
+                    && !json_key.is_empty()
+                    && !type_str.starts_with("mapping")
+                    && !type_str.starts_with("return")
                 {
                     current_fields.insert(json_key.to_string(), pike_default_value(type_str));
                 }
@@ -1650,11 +1800,23 @@ mod tests {
         let value: Value = serde_json::from_str(json).unwrap();
 
         let proto = gen_protobuf(&value, "MyModel");
-        assert!(proto.contains("message MyModel {"), "Protobuf wrapper:\n{}", proto);
-        assert!(proto.contains("repeated MyModelItem"), "Protobuf:\n{}", proto);
+        assert!(
+            proto.contains("message MyModel {"),
+            "Protobuf wrapper:\n{}",
+            proto
+        );
+        assert!(
+            proto.contains("repeated MyModelItem"),
+            "Protobuf:\n{}",
+            proto
+        );
 
         let thrift = gen_thrift(&value, "MyModel");
-        assert!(thrift.contains("struct MyModel {"), "Thrift wrapper:\n{}", thrift);
+        assert!(
+            thrift.contains("struct MyModel {"),
+            "Thrift wrapper:\n{}",
+            thrift
+        );
         assert!(thrift.contains("list<MyModelItem>"), "Thrift:\n{}", thrift);
     }
 
@@ -1705,9 +1867,18 @@ mod tests {
         assert!(result.structs.contains_key("Root"));
         assert!(result.structs.contains_key("User"));
         let user_fields = &result.structs["User"];
-        assert!(matches!(user_fields.get("email"), Some(JsonType::Optional(_))), "email should be optional");
-        assert!(matches!(user_fields.get("age"), Some(JsonType::Optional(_))), "age should be optional");
-        assert!(matches!(user_fields.get("name"), Some(JsonType::String)), "name should be required");
+        assert!(
+            matches!(user_fields.get("email"), Some(JsonType::Optional(_))),
+            "email should be optional"
+        );
+        assert!(
+            matches!(user_fields.get("age"), Some(JsonType::Optional(_))),
+            "age should be optional"
+        );
+        assert!(
+            matches!(user_fields.get("name"), Some(JsonType::String)),
+            "name should be required"
+        );
     }
 
     #[test]
@@ -1729,8 +1900,14 @@ mod tests {
         let value: Value = serde_json::from_str(json).unwrap();
         let result = collect_structs(&value, "Data");
         let fields = &result.structs["DataItem"];
-        assert!(matches!(fields.get("email"), Some(JsonType::Optional(_))), "email should be optional");
-        assert!(matches!(fields.get("name"), Some(JsonType::String)), "name should be required");
+        assert!(
+            matches!(fields.get("email"), Some(JsonType::Optional(_))),
+            "email should be optional"
+        );
+        assert!(
+            matches!(fields.get("name"), Some(JsonType::String)),
+            "name should be required"
+        );
     }
 
     #[test]
@@ -1739,8 +1916,14 @@ mod tests {
         let value: Value = serde_json::from_str(json).unwrap();
         let result = collect_structs(&value, "Data");
         let fields = &result.structs["DataItem"];
-        assert!(matches!(fields.get("b"), Some(JsonType::Optional(_))), "b should be optional");
-        assert!(matches!(fields.get("a"), Some(JsonType::Integer)), "a should be required integer");
+        assert!(
+            matches!(fields.get("b"), Some(JsonType::Optional(_))),
+            "b should be optional"
+        );
+        assert!(
+            matches!(fields.get("a"), Some(JsonType::Integer)),
+            "a should be required integer"
+        );
     }
 
     // ========== 5. Empty object ==========
@@ -1798,8 +1981,16 @@ mod tests {
         let json = r#"{"name":"test","data":null}"#;
         let value: Value = serde_json::from_str(json).unwrap();
         let proto = gen_protobuf(&value, "Item");
-        assert!(proto.contains("optional"), "Null field should be optional in protobuf.\n{}", proto);
-        assert!(proto.contains("string name"), "Proto should have name field.\n{}", proto);
+        assert!(
+            proto.contains("optional"),
+            "Null field should be optional in protobuf.\n{}",
+            proto
+        );
+        assert!(
+            proto.contains("string name"),
+            "Proto should have name field.\n{}",
+            proto
+        );
     }
 
     #[test]
@@ -1807,8 +1998,16 @@ mod tests {
         let json = r#"{"name":"test","data":null}"#;
         let value: Value = serde_json::from_str(json).unwrap();
         let thrift = gen_thrift(&value, "Item");
-        assert!(thrift.contains("optional"), "Null field should be optional in thrift.\n{}", thrift);
-        assert!(thrift.contains("required string name"), "Thrift:\n{}", thrift);
+        assert!(
+            thrift.contains("optional"),
+            "Null field should be optional in thrift.\n{}",
+            thrift
+        );
+        assert!(
+            thrift.contains("required string name"),
+            "Thrift:\n{}",
+            thrift
+        );
     }
 
     // ========== 11. Protobuf/Thrift wrapper message ==========
@@ -1818,9 +2017,21 @@ mod tests {
         let json = r#"[{"name":"test"}]"#;
         let value: Value = serde_json::from_str(json).unwrap();
         let proto = gen_protobuf(&value, "MyModel");
-        assert!(proto.contains("message MyModel {"), "Proto wrapper:\n{}", proto);
-        assert!(proto.contains("repeated MyModelItem"), "Proto repeated:\n{}", proto);
-        assert!(proto.contains("message MyModelItem {"), "Proto item:\n{}", proto);
+        assert!(
+            proto.contains("message MyModel {"),
+            "Proto wrapper:\n{}",
+            proto
+        );
+        assert!(
+            proto.contains("repeated MyModelItem"),
+            "Proto repeated:\n{}",
+            proto
+        );
+        assert!(
+            proto.contains("message MyModelItem {"),
+            "Proto item:\n{}",
+            proto
+        );
     }
 
     #[test]
@@ -1828,9 +2039,21 @@ mod tests {
         let json = r#"[{"name":"test"}]"#;
         let value: Value = serde_json::from_str(json).unwrap();
         let thrift = gen_thrift(&value, "MyModel");
-        assert!(thrift.contains("struct MyModel {"), "Thrift wrapper:\n{}", thrift);
-        assert!(thrift.contains("list<MyModelItem>"), "Thrift list:\n{}", thrift);
-        assert!(thrift.contains("struct MyModelItem {"), "Thrift item:\n{}", thrift);
+        assert!(
+            thrift.contains("struct MyModel {"),
+            "Thrift wrapper:\n{}",
+            thrift
+        );
+        assert!(
+            thrift.contains("list<MyModelItem>"),
+            "Thrift list:\n{}",
+            thrift
+        );
+        assert!(
+            thrift.contains("struct MyModelItem {"),
+            "Thrift item:\n{}",
+            thrift
+        );
     }
 
     // ========== 12. code_to_json field name conversion ==========
@@ -1852,12 +2075,28 @@ message PolicyQueryParam {
 "#;
         let result = parse_code_to_json(proto, "protobuf", "MyModel").unwrap();
         let obj = result.as_object().unwrap();
-        assert!(obj.contains_key("MyModel"), "Should preserve struct name MyModel");
-        assert!(obj.contains_key("PolicyQueryParam"), "Should preserve struct name PolicyQueryParam");
+        assert!(
+            obj.contains_key("MyModel"),
+            "Should preserve struct name MyModel"
+        );
+        assert!(
+            obj.contains_key("PolicyQueryParam"),
+            "Should preserve struct name PolicyQueryParam"
+        );
         let my_model = obj["MyModel"].as_object().unwrap();
-        assert!(my_model.contains_key("emailTitle"), "snake_case → camelCase: email_title → emailTitle, got: {:?}", my_model.keys().collect::<Vec<_>>());
-        assert!(my_model.contains_key("brokerId"), "snake_case → camelCase: broker_id → brokerId");
-        assert!(my_model.contains_key("policyQueryParam"), "snake_case → camelCase: policy_query_param → policyQueryParam");
+        assert!(
+            my_model.contains_key("emailTitle"),
+            "snake_case → camelCase: email_title → emailTitle, got: {:?}",
+            my_model.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            my_model.contains_key("brokerId"),
+            "snake_case → camelCase: broker_id → brokerId"
+        );
+        assert!(
+            my_model.contains_key("policyQueryParam"),
+            "snake_case → camelCase: policy_query_param → policyQueryParam"
+        );
     }
 
     #[test]
@@ -1872,8 +2111,15 @@ message MyModel {
 "#;
         let result = parse_code_to_json(proto, "protobuf", "MyModel").unwrap();
         let obj = result.as_object().unwrap();
-        assert!(obj.contains_key("emailTitle"), "Single message fields should be camelCase: {:?}", obj.keys().collect::<Vec<_>>());
-        assert!(obj.contains_key("brokerId"), "Single message fields should be camelCase");
+        assert!(
+            obj.contains_key("emailTitle"),
+            "Single message fields should be camelCase: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            obj.contains_key("brokerId"),
+            "Single message fields should be camelCase"
+        );
     }
 
     #[test]
@@ -1886,7 +2132,11 @@ struct MyModel {
 "#;
         let result = parse_code_to_json(rust_code, "rust", "MyModel").unwrap();
         let obj = result.as_object().unwrap();
-        assert!(obj.contains_key("emailTitle"), "Rust snake_case → camelCase: {:?}", obj.keys().collect::<Vec<_>>());
+        assert!(
+            obj.contains_key("emailTitle"),
+            "Rust snake_case → camelCase: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
         assert!(obj.contains_key("brokerId"), "Rust snake_case → camelCase");
     }
 
@@ -1900,8 +2150,15 @@ type MyModel struct {
 "#;
         let result = parse_code_to_json(go_code, "go", "MyModel").unwrap();
         let obj = result.as_object().unwrap();
-        assert!(obj.contains_key("email_title"), "Go should use json tag value: {:?}", obj.keys().collect::<Vec<_>>());
-        assert!(obj.contains_key("broker_id"), "Go should use json tag value");
+        assert!(
+            obj.contains_key("email_title"),
+            "Go should use json tag value: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            obj.contains_key("broker_id"),
+            "Go should use json tag value"
+        );
     }
 
     #[test]
@@ -1914,8 +2171,11 @@ interface MyModel {
 "#;
         let result = parse_code_to_json(ts_code, "typescript", "MyModel").unwrap();
         let obj = result.as_object().unwrap();
-        assert!(obj.contains_key("emailTitle"), "TS should keep camelCase: {:?}", obj.keys().collect::<Vec<_>>());
+        assert!(
+            obj.contains_key("emailTitle"),
+            "TS should keep camelCase: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
         assert!(obj.contains_key("brokerId"), "TS should keep camelCase");
     }
-
 }
