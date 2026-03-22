@@ -2,7 +2,7 @@
   import { escapeString, unescapeString, extractJsonFragments } from '$lib/services/json';
   import { openFileDialog, saveFile as writeFile, saveFileDialog, getFileName } from '$lib/services/file';
   import { exportJsonAsImage, copyImageToClipboard } from '$lib/services/exportImage';
-  import { tabsStore, type Tab } from '$lib/stores/tabs';
+  import { tabsStore, getTabDisplayName, type Tab } from '$lib/stores/tabs';
   import { shortcutsStore, formatShortcutKey, type ShortcutsSettings } from '$lib/stores/shortcuts';
   import { settingsStore } from '$lib/stores/settings';
   import { t } from '$lib/i18n';
@@ -397,7 +397,13 @@
     }
 
     try {
-      const path = await saveFileDialog(content);
+      const title = getTabDisplayName(activeTab).trim();
+      let defaultFileName = title ? title : 'Untitled';
+      if (!defaultFileName.toLowerCase().endsWith('.json')) {
+        defaultFileName += '.json';
+      }
+
+      const path = await saveFileDialog(content, defaultFileName);
       if (path) {
         const name = await getFileName(path);
         tabsStore.updateTabFile(activeTab.id, path, name);

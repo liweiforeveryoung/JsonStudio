@@ -3,6 +3,38 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
+fn sanitize_file_name(input: &str) -> String {
+    let trimmed = input.trim();
+    let mut out = String::with_capacity(trimmed.len());
+
+    for ch in trimmed.chars() {
+        // Drop ASCII control chars
+        if ch.is_control() {
+            continue;
+        }
+
+        // Replace common illegal filename characters (esp. Windows) + path separators
+        match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => out.push('_'),
+            _ => out.push(ch),
+        }
+    }
+
+    // Windows compatibility: filenames cannot end with space or dot
+    let out = out.trim_end_matches([' ', '.']);
+
+    // Avoid extremely long names
+    out.chars().take(200).collect::<String>()
+}
+
+fn ensure_json_extension(name: &str) -> String {
+    if name.to_lowercase().ends_with(".json") {
+        name.to_string()
+    } else {
+        format!("{}.json", name)
+    }
+}
+
 /// Open a JSON file using file picker dialog
 #[tauri::command]
 pub async fn open_file_dialog(app: AppHandle) -> Result<Option<(String, String)>, String> {
@@ -36,13 +68,26 @@ pub async fn save_file(path: String, content: String) -> Result<(), String> {
 
 /// Save content to a new file using save dialog
 #[tauri::command]
-pub async fn save_file_dialog(app: AppHandle, content: String) -> Result<Option<String>, String> {
+pub async fn save_file_dialog(
+    app: AppHandle,
+    content: String,
+    default_file_name: Option<String>,
+) -> Result<Option<String>, String> {
+    let suggested = default_file_name.unwrap_or_else(|| "Untitled.json".to_string());
+    let sanitized = sanitize_file_name(&suggested);
+    let base = if sanitized.is_empty() {
+        "Untitled".to_string()
+    } else {
+        sanitized
+    };
+    let final_name = ensure_json_extension(&base);
+
     let file_path = app
         .dialog()
         .file()
         .add_filter("JSON Files", &["json"])
         .add_filter("All Files", &["*"])
-        .set_file_name("untitled.json")
+        .set_file_name(&final_name)
         .blocking_save_file();
 
     match file_path {

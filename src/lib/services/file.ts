@@ -21,8 +21,11 @@ export async function saveFile(path: string, content: string): Promise<void> {
  * Save content to new file using save dialog
  * @returns File path or null if cancelled
  */
-export async function saveFileDialog(content: string): Promise<string | null> {
-  const result = await invoke<string | null>('save_file_dialog', { content });
+export async function saveFileDialog(content: string, defaultFileName?: string): Promise<string | null> {
+  // Tauri command args are deserialized from camelCase keys
+  const payload: { content: string; defaultFileName?: string } = { content };
+  if (defaultFileName) payload.defaultFileName = defaultFileName;
+  const result = await invoke<string | null>('save_file_dialog', payload);
   return result;
 }
 
