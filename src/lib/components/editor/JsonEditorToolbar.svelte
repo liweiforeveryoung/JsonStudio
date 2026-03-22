@@ -339,7 +339,7 @@
       const result = await openFileDialog();
       if (result) {
         const [path, fileContent] = result;
-        const name = await getFileName(path);
+        const name = (await getFileName(path)) || 'file';
 
         // Smart open: reuse empty tab or create new one
         const maxTabsReached = tabsStore.openFile(fileContent, path, name);
@@ -350,7 +350,7 @@
         }
 
         await onStatsUpdate();
-        onToast(`Opened: ${name || 'file'}`);
+        onToast(`Opened: ${name}`);
       }
     } catch (e) {
       onToast('Failed to open file', 'error');

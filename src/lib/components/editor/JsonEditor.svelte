@@ -97,7 +97,7 @@
     for (const filePath of paths) {
       try {
         const fileContent = await readFile(filePath);
-        const name = await getFileName(filePath);
+        const name = (await getFileName(filePath)) || 'file';
         const maxTabsReached = tabsStore.openFile(fileContent, filePath, name);
         
         if (maxTabsReached) {
@@ -107,7 +107,7 @@
         
         quickDetectFormatAndSwitchLanguage(fileContent);  // Immediate language switch
         await updateStats(true);  // Show JSON5 toast if detected
-        showToast(`Opened: ${name || 'file'}`);
+        showToast(`Opened: ${name}`);
       } catch (e) {
         showToast('Failed to open file', 'error');
         console.error('Open file error:', e);
