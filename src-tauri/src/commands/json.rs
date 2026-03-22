@@ -156,6 +156,88 @@ pub fn json_escape(content: &str) -> String {
     serde_json::to_string(content).unwrap_or_else(|_| String::from("\"\""))
 }
 
+/// Extract all valid JSON fragments from a mixed text string
+#[tauri::command]
+pub fn extract_json_fragments(content: &str) -> Result<Vec<String>, String> {
+    let mut fragments: Vec<String> = Vec::new();
+    let chars: Vec<char> = content.chars().collect();
+    let len = chars.len();
+
+    for start_pos in 0..len {
+        // Only start from { or [
+        if chars[start_pos] != '{' && chars[start_pos] != '[' {
+            continue;
+        }
+
+        let mut stack: Vec<char> = Vec::new();
+        let mut in_string = false;
+        let mut escape_next = false;
+        let mut end_pos = start_pos;
+
+        for i in start_pos..len {
+            let ch = chars[i];
+
+            if escape_next {
+                escape_next = false;
+                end_pos = i;
+                continue;
+            }
+
+            if ch == '\\' && in_string {
+                escape_next = true;
+                end_pos = i;
+                continue;
+            }
+
+            if ch == '"' && !escape_next {
+                in_string = !in_string;
+                end_pos = i;
+                continue;
+            }
+
+            if !in_string {
+                if ch == '{' || ch == '[' {
+                    stack.push(ch);
+                } else if ch == '}' {
+                    if stack.is_empty() || stack.pop() != Some('{') {
+                        break;
+                    }
+                } else if ch == ']' {
+                    if stack.is_empty() || stack.pop() != Some('[') {
+                        break;
+                    }
+                }
+
+                if stack.is_empty() {
+                    end_pos = i;
+                    break;
+                }
+            }
+
+            end_pos = i;
+        }
+
+        // Try to parse the fragment
+        let fragment: String = chars[start_pos..=end_pos].iter().collect();
+
+        // Try serde_json first
+        if let Ok(v) = serde_json::from_str::<Value>(&fragment) {
+            let formatted = serde_json::to_string(&v).unwrap_or(fragment.clone());
+            fragments.push(formatted);
+            continue;
+        }
+
+        // Try json5 as fallback
+        if let Ok(v) = json5::from_str::<Value>(&fragment) {
+            let formatted = serde_json::to_string(&v).unwrap_or(fragment.clone());
+            fragments.push(formatted);
+            continue;
+        }
+    }
+
+    Ok(fragments)
+}
+
 /// Unescape string (convert JSON string format to plain string)
 #[tauri::command]
 pub fn json_unescape(content: &str) -> Result<String, String> {

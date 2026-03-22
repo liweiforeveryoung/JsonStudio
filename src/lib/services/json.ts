@@ -60,3 +60,10 @@ export async function escapeString(content: string): Promise<string> {
 export async function unescapeString(content: string): Promise<string> {
   return await invoke<string>('json_unescape', { content });
 }
+
+/**
+ * Extract all valid JSON fragments from a mixed text string
+ */
+export async function extractJsonFragments(content: string): Promise<string[]> {
+  return await invoke<string[]>('extract_json_fragments', { content });
+}

@@ -193,4 +193,10 @@ export default {
   'fixJson.success': 'JSON 已修复',
   'fixJson.failed': 'JSON 修复失败',
   'fixJson.unrepairable': '无法自动修复，请手动检查',
+
+  // Extract JSON
+  'extractJson.button': '提取 JSON',
+  'extractJson.success': '已提取 {count} 个 JSON 片段',
+  'extractJson.noFragments': '未找到有效的 JSON 片段',
+  'extractJson.failed': '提取 JSON 片段失败',
 } as const;

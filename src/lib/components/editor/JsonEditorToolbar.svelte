@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { escapeString, unescapeString } from '$lib/services/json';
+  import { escapeString, unescapeString, extractJsonFragments } from '$lib/services/json';
   import { openFileDialog, saveFile as writeFile, saveFileDialog, getFileName } from '$lib/services/file';
   import { exportJsonAsImage, copyImageToClipboard } from '$lib/services/exportImage';
   import { tabsStore, type Tab } from '$lib/stores/tabs';
@@ -307,6 +307,33 @@
     editor?.unfoldAll();
   }
 
+  async function handleExtractJson() {
+    if (isProcessing) return;
+    if (!hasContent) {
+      onToast($t('toolbar.noContentProcess'), 'info');
+      return;
+    }
+    isProcessing = true;
+
+    try {
+      const fragments = await extractJsonFragments(content);
+      if (fragments.length === 0) {
+        onToast($t('extractJson.noFragments'), 'info');
+        return;
+      }
+      // Combine fragments into an array
+      const combined = '[' + fragments.join(',\n') + ']';
+      setContentValue(combined);
+      await onStatsUpdate();
+      onToast($t('extractJson.success', { count: fragments.length }));
+    } catch (e) {
+      console.error('Extract JSON failed:', e);
+      onToast($t('extractJson.failed'), 'error');
+    } finally {
+      isProcessing = false;
+    }
+  }
+
   async function handleOpenFile() {
     try {
       const result = await openFileDialog();
@@ -450,6 +477,14 @@
       <button class="toolbar-btn" onclick={handleUnfoldAll} disabled={isProcessing} title="{$t('toolbar.unfoldAll')} ({shortcutLabel('unfoldAll')})">
         <svg class="toolbar-icon" style="color: #34d399;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l5-4 5 4"/><path d="M7 16l5 4 5-4"/></svg>
         {$t('toolbar.unfoldAll')}
+      </button>
+      <button class="toolbar-btn" onclick={handleExtractJson} disabled={isProcessing} title={$t('extractJson.button')}>
+        <svg class="toolbar-icon" style="color: #22c55e;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 4v16"/>
+          <path d="M16 4v16"/>
+          <path d="M12 4v16"/>
+        </svg>
+        {$t('extractJson.button')}
       </button>
     </div>
 

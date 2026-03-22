@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::json::{json_format, json_minify, json_stats, json_validate, json_escape, json_unescape};
+use commands::json::{json_format, json_minify, json_stats, json_validate, json_escape, json_unescape, extract_json_fragments};
 use commands::window::{set_window_theme, open_devtools};
 use commands::shortcuts::{show_main_window, format_clipboard_and_show, update_shortcut};
 use commands::file::{open_file_dialog, save_file, save_file_dialog, read_file, is_json_file, get_file_name};
@@ -80,6 +80,7 @@ pub fn run() {
             json_stats,
             json_escape,
             json_unescape,
+            extract_json_fragments,
             set_window_theme,
             open_devtools,
             show_main_window,

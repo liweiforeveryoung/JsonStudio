@@ -193,4 +193,10 @@ export default {
   'fixJson.success': 'JSON repaired successfully',
   'fixJson.failed': 'Failed to repair JSON',
   'fixJson.unrepairable': 'Cannot auto-fix, please check manually',
+
+  // Extract JSON
+  'extractJson.button': 'Extract JSON',
+  'extractJson.success': 'Extracted {count} JSON fragment(s)',
+  'extractJson.noFragments': 'No valid JSON fragments found',
+  'extractJson.failed': 'Failed to extract JSON fragments',
 } as const;
