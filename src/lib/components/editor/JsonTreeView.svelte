@@ -21,6 +21,20 @@
     result: string;
   };
 
+  type CompletionItem = {
+    expr: string;
+    pointer: string;
+    depth: number;
+    label: string;
+    kind: 'object' | 'array' | 'primitive';
+  };
+
+  type CompletionIndex = {
+    jmespath: CompletionItem[];
+    jsonpath: CompletionItem[];
+    nodeCount: number;
+  };
+
   let { content, editor } = $props<{
     content: string;
     editor: MonacoEditor | null;
@@ -72,6 +86,22 @@
   let isAllExpanded = $state(false);
   let helpOpen = $state(false);
 
+  let searchBoxEl: HTMLDivElement;
+  let searchInputEl: HTMLInputElement;
+
+  const COMPLETION_NODE_LIMIT = 50_000;
+  const SUGGEST_LIMIT = 30;
+  const SUGGEST_DEBOUNCE_MS = 80;
+
+  let completionIndex = $state<CompletionIndex | null>(null);
+  let suggestions = $state<CompletionItem[]>([]);
+  let isSuggestOpen = $state(false);
+  let activeSuggestIndex = $state(0);
+  let suggestTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFilterMode = $state<QueryMode>('jmespath');
+  let lastFilterInput = $state('');
+  let lastFiltered = $state<CompletionItem[]>([]);
+
   // Build tree when content changes
   $effect(() => {
     if (content !== previousContent) {
@@ -86,6 +116,195 @@
     const nodes = treeNodes;
     void updateQueryMatches(queryMode, query, data, nodes);
   });
+
+  $effect(() => {
+    const data = rootData;
+    const nodes = treeNodes;
+    if (data == null || nodes.length === 0) {
+      completionIndex = null;
+      suggestions = [];
+      isSuggestOpen = false;
+      activeSuggestIndex = 0;
+      lastFilterInput = '';
+      lastFiltered = [];
+      return;
+    }
+    completionIndex = buildCompletionIndex(nodes, data);
+  });
+
+  $effect(() => {
+    scheduleSuggestUpdate(queryMode, searchQuery, completionIndex);
+  });
+
+  $effect(() => {
+    const open = isSuggestOpen;
+    if (!open) return;
+
+    const onGlobalClickCapture = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && searchBoxEl?.contains(target)) return;
+      isSuggestOpen = false;
+    };
+
+    window.addEventListener('click', onGlobalClickCapture, true);
+    return () => window.removeEventListener('click', onGlobalClickCapture, true);
+  });
+
+  function buildCompletionIndex(nodes: TreeNode[], data: unknown): CompletionIndex {
+    const jmespath: CompletionItem[] = [];
+    const jsonpath: CompletionItem[] = [];
+    let nodeCount = 0;
+
+    const walk = (list: TreeNode[]) => {
+      for (const node of list) {
+        if (nodeCount >= COMPLETION_NODE_LIMIT) return;
+        nodeCount++;
+
+        const depth = node.path ? node.path.split('/').length - 1 : 0;
+        const kind: CompletionItem['kind'] =
+          node.type === 'object' ? 'object' : node.type === 'array' ? 'array' : 'primitive';
+
+        jmespath.push({
+          expr: pointerToJmesPath(node.path, data),
+          pointer: node.path,
+          depth,
+          label: node.key,
+          kind,
+        });
+        jsonpath.push({
+          expr: pointerToJsonPath(node.path, data),
+          pointer: node.path,
+          depth,
+          label: node.key,
+          kind,
+        });
+
+        if (node.children?.length) {
+          walk(node.children);
+        }
+      }
+    };
+
+    walk(nodes);
+
+    const byDepthThenExpr = (a: CompletionItem, b: CompletionItem) =>
+      a.depth - b.depth || a.expr.localeCompare(b.expr);
+
+    jmespath.sort(byDepthThenExpr);
+    jsonpath.sort(byDepthThenExpr);
+
+    return { jmespath, jsonpath, nodeCount };
+  }
+
+  function normalizeJsonPathForMatch(value: string): string {
+    let s = value.trim();
+    if (s.startsWith('$')) s = s.slice(1);
+    if (s.startsWith('.')) s = s.slice(1);
+    return s;
+  }
+
+  function matchesExpr(mode: QueryMode, expr: string, input: string): boolean {
+    const raw = input.trim();
+    if (!raw) return false;
+
+    if (expr.startsWith(raw)) return true;
+
+    if (mode === 'jsonpath') {
+      const inNorm = normalizeJsonPathForMatch(raw);
+      const exNorm = normalizeJsonPathForMatch(expr);
+      if (inNorm && exNorm.startsWith(inNorm)) return true;
+      if (inNorm.length >= 2 && exNorm.includes(inNorm)) return true;
+    }
+
+    return raw.length >= 2 ? expr.includes(raw) : false;
+  }
+
+  function scheduleSuggestUpdate(
+    mode: QueryMode,
+    rawInput: string,
+    index: CompletionIndex | null
+  ) {
+    if (suggestTimer) clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(() => {
+      updateSuggestions(mode, rawInput, index);
+    }, SUGGEST_DEBOUNCE_MS);
+  }
+
+  function updateSuggestions(mode: QueryMode, rawInput: string, index: CompletionIndex | null) {
+    const input = rawInput.trim();
+    if (!index || !input) {
+      suggestions = [];
+      isSuggestOpen = false;
+      activeSuggestIndex = 0;
+      lastFilterInput = '';
+      lastFiltered = [];
+      return;
+    }
+
+    const all = mode === 'jsonpath' ? index.jsonpath : index.jmespath;
+    const canReuse = lastFilterMode === mode && input.startsWith(lastFilterInput) && lastFiltered.length > 0;
+    const source = canReuse ? lastFiltered : all;
+    const next: CompletionItem[] = [];
+
+    for (const item of source) {
+      if (matchesExpr(mode, item.expr, input)) {
+        next.push(item);
+        if (next.length >= SUGGEST_LIMIT) break;
+      }
+    }
+
+    suggestions = next;
+    isSuggestOpen = next.length > 0;
+    activeSuggestIndex = 0;
+    lastFilterMode = mode;
+    lastFilterInput = input;
+    lastFiltered = next;
+  }
+
+  function applySuggestion(item: CompletionItem) {
+    const current = searchQuery;
+    const cursorAtEnd = (searchInputEl?.selectionStart ?? current.length) === current.length;
+    const nextValue = cursorAtEnd && item.expr.startsWith(current) ? item.expr : item.expr;
+    searchQuery = nextValue;
+    isSuggestOpen = false;
+    activeSuggestIndex = 0;
+    setTimeout(() => {
+      try {
+        searchInputEl?.focus();
+        searchInputEl?.setSelectionRange(nextValue.length, nextValue.length);
+      } catch (_) {}
+    }, 0);
+  }
+
+  function handleSearchKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      isSuggestOpen = false;
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      if (!isSuggestOpen && suggestions.length > 0) isSuggestOpen = true;
+      if (!isSuggestOpen || suggestions.length === 0) return;
+      event.preventDefault();
+      activeSuggestIndex = (activeSuggestIndex + 1) % suggestions.length;
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      if (!isSuggestOpen && suggestions.length > 0) isSuggestOpen = true;
+      if (!isSuggestOpen || suggestions.length === 0) return;
+      event.preventDefault();
+      activeSuggestIndex = (activeSuggestIndex - 1 + suggestions.length) % suggestions.length;
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      if (!isSuggestOpen || suggestions.length === 0) return;
+      event.preventDefault();
+      const item = suggestions[activeSuggestIndex];
+      if (item) applySuggestion(item);
+    }
+  }
 
   async function buildTree() {
     if (!content.trim()) {
@@ -455,8 +674,8 @@
   </div>
 
   <!-- Toolbar -->
-  <div class="json-tree-toolbar">
-    <div class="json-tree-search-box">
+<div class="json-tree-toolbar">
+    <div class="json-tree-search-box" bind:this={searchBoxEl}>
       <svg class="json-tree-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"/>
         <path d="m21 21-4.35-4.35"/>
@@ -466,12 +685,16 @@
         placeholder={queryMode === 'jsonpath' ? $t('treeView.searchPlaceholderJsonpath') : $t('treeView.searchPlaceholder')}
         value={searchQuery}
         oninput={(e) => { searchQuery = e.currentTarget.value; }}
+        onfocus={() => scheduleSuggestUpdate(queryMode, searchQuery, completionIndex)}
+        onblur={() => { isSuggestOpen = false; }}
+        onkeydown={handleSearchKeydown}
+        bind:this={searchInputEl}
         spellcheck="false"
       />
       {#if searchQuery}
         <button
           class="json-tree-clear-btn"
-          onclick={() => { searchQuery = ''; }}
+          onclick={() => { searchQuery = ''; isSuggestOpen = false; }}
           title={$t('treeView.clearQuery')}
           type="button"
         >
@@ -479,6 +702,27 @@
             <path d="M18 6L6 18M6 6l12 12"/>
           </svg>
         </button>
+      {/if}
+
+      {#if isSuggestOpen}
+        <div class="json-tree-suggest" role="listbox" aria-label="query suggestions">
+          {#each suggestions as item, i}
+            <button
+              type="button"
+              class="json-tree-suggest-item"
+              class:is-active={i === activeSuggestIndex}
+              role="option"
+              aria-selected={i === activeSuggestIndex}
+              title={item.expr}
+              onmousedown={(e) => {
+                e.preventDefault();
+                applySuggestion(item);
+              }}
+            >
+              <span class="json-tree-suggest-expr">{item.expr}</span>
+            </button>
+          {/each}
+        </div>
       {/if}
     </div>
 
@@ -810,7 +1054,8 @@
     transition: all 0.2s ease;
     height: 28px;
     min-width: 0;
-    overflow: hidden;
+    position: relative;
+    overflow: visible;
   }
 
   .json-tree-search-box:focus-within {
@@ -860,6 +1105,49 @@
   .json-tree-clear-btn:hover {
     background: var(--text-secondary);
     color: var(--bg-primary);
+  }
+
+  .json-tree-suggest {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow: auto;
+    padding: 6px;
+    border-radius: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.25);
+    z-index: 1500;
+  }
+
+  .json-tree-suggest-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text-primary);
+    transition: background 0.12s ease;
+  }
+
+  .json-tree-suggest-item:hover,
+  .json-tree-suggest-item.is-active {
+    background: var(--bg-secondary);
+  }
+
+  .json-tree-suggest-expr {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .json-tree-query-error {
