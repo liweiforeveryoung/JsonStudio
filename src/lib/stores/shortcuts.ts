@@ -117,6 +117,23 @@ const defaultShortcuts: ShortcutsSettings = {
 
 const STORAGE_KEY = 'jsonstudio_shortcuts';
 
+type GlobalShortcutBinding = {
+  id: string;
+  key: string;
+};
+
+function isGlobalShortcutsEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem('app-settings');
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return !!parsed?.enableGlobalShortcuts;
+  } catch {
+    return false;
+  }
+}
+
 function getDefaultShortcuts(): ShortcutsSettings {
   return JSON.parse(JSON.stringify(defaultShortcuts));
 }
@@ -162,6 +179,7 @@ function createShortcutsStore() {
       });
 
       if (isGlobal) {
+        if (!isGlobalShortcutsEnabled()) return;
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           await invoke('update_shortcut', { id, key });
@@ -188,6 +206,7 @@ function createShortcutsStore() {
       });
 
       if (isGlobal && defaultKey) {
+        if (!isGlobalShortcutsEnabled()) return;
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           await invoke('update_shortcut', { id, key: defaultKey });
@@ -202,6 +221,7 @@ function createShortcutsStore() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(freshDefaults));
       
       // Update all global shortcuts to their defaults in the backend
+      if (!isGlobalShortcutsEnabled()) return;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         for (const key in freshDefaults) {
@@ -212,6 +232,24 @@ function createShortcutsStore() {
         }
       } catch (error) {
         console.error('Failed to reset all global shortcuts:', error);
+      }
+    },
+
+    syncGlobalShortcuts: async (enabled: boolean) => {
+      const state = get({ subscribe });
+      const bindings: GlobalShortcutBinding[] = [];
+
+      for (const shortcutKey in state) {
+        const shortcut = state[shortcutKey as keyof ShortcutsSettings];
+        if (!shortcut.isGlobal) continue;
+        bindings.push({ id: shortcut.id, key: shortcut.currentKey });
+      }
+
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('sync_global_shortcuts', { enabled, bindings });
+      } catch (error) {
+        console.error('Failed to sync global shortcuts:', error);
       }
     },
     matchShortcut(e: KeyboardEvent): string | null {

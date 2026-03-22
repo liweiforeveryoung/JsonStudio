@@ -16,6 +16,7 @@
     lineHeight: 20,
     tabSize: 2,
     showTreeView: true,
+    enableGlobalShortcuts: false,
   });
   
   $effect(() => {
@@ -66,6 +67,10 @@
 
   function handleTreeViewToggle(value: boolean) {
     settingsStore.updateSetting('showTreeView', value);
+  }
+
+  function handleEnableGlobalShortcutsToggle(value: boolean) {
+    settingsStore.updateSetting('enableGlobalShortcuts', value);
   }
 
   function handleBackdropClick(e: MouseEvent) {
@@ -335,6 +340,25 @@
               </div>
             </div>
           {/snippet}
+
+          <div class="settings-list !mb-3">
+            <div class="settings-item">
+              <div class="settings-item-row">
+                <div class="settings-item-label">
+                  <span class="settings-item-name">{$t('settings.enableGlobalShortcuts')}</span>
+                  <span class="settings-hint">{$t('settings.enableGlobalShortcutsDesc')}</span>
+                </div>
+                <button
+                  class="settings-toggle {settings.enableGlobalShortcuts ? 'is-on' : ''}"
+                  onclick={() => handleEnableGlobalShortcutsToggle(!settings.enableGlobalShortcuts)}
+                  type="button"
+                  aria-pressed={settings.enableGlobalShortcuts}
+                >
+                  <span class="settings-toggle-thumb"></span>
+                </button>
+              </div>
+            </div>
+          </div>
 
           <div class="settings-shortcut-group-label">{$t('settings.shortcutsGlobal')}</div>
           <div class="settings-list">

@@ -52,6 +52,8 @@ export default {
   'settings.shortcuts': 'Shortcuts',
   'settings.shortcutsGlobal': 'Global Shortcuts',
   'settings.shortcutsApp': 'App Shortcuts',
+  'settings.enableGlobalShortcuts': 'Enable Global Shortcuts',
+  'settings.enableGlobalShortcutsDesc': 'When enabled, Show App / Format Clipboard work system-wide',
   'settings.showApp': 'Show App',
   'settings.showAppDesc': 'Bring Json Studio to front',
   'settings.formatClipboard': 'Format Clipboard',

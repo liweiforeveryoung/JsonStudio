@@ -52,6 +52,8 @@ export default {
   'settings.shortcuts': '快捷键',
   'settings.shortcutsGlobal': '全局快捷键',
   'settings.shortcutsApp': '应用快捷键',
+  'settings.enableGlobalShortcuts': '启用全局快捷键',
+  'settings.enableGlobalShortcutsDesc': '开启后可在系统范围触发“显示应用 / 格式化剪贴板”',
   'settings.showApp': '显示应用',
   'settings.showAppDesc': '将 Json Studio 置于前台',
   'settings.formatClipboard': '格式化剪贴板',

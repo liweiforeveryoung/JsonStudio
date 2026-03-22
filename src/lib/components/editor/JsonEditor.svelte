@@ -91,6 +91,7 @@
     lineHeight: 20,
     tabSize: 2,
     showTreeView: true,
+    enableGlobalShortcuts: false,
   });
   
   async function openFilePaths(paths: string[]) {
@@ -132,8 +133,6 @@
   }
 
   onMount(() => {
-    settingsStore.init();
-    
     // Initialize file watcher service
     fileWatcherService.init();
     
@@ -198,8 +197,6 @@
         console.error('Failed to get pending files:', e);
       }
     })();
-    
-    shortcutsStore.init();
 
     const handleKeydown = (e: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;

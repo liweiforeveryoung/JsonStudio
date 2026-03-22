@@ -15,14 +15,17 @@ use commands::json::{
     extract_json_fragments, json_escape, json_format, json_minify, json_stats, json_unescape,
     json_validate,
 };
-use commands::shortcuts::{format_clipboard_and_show, show_main_window, update_shortcut};
+use commands::shortcuts::{format_clipboard_and_show, show_main_window, sync_global_shortcuts, update_shortcut};
 use commands::window::{open_devtools, set_window_theme};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::Emitter;
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 static PENDING_FILES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static FRONTEND_READY: Mutex<bool> = Mutex::new(false);
+
+#[derive(Default)]
+pub struct GlobalShortcutState(pub Mutex<HashMap<String, String>>);
 
 #[tauri::command]
 fn get_pending_files() -> Vec<String> {
@@ -39,37 +42,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(FileWatcherState::new())
-        .setup(|app| {
-            let app_handle = app.handle().clone();
-
-            // Register global shortcut: show app
-            let show_app_handle = app_handle.clone();
-            app.global_shortcut()
-                .on_shortcut(
-                    "CommandOrControl+Shift+J",
-                    move |_app, _shortcut, _event| {
-                        let handle = show_app_handle.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = show_main_window(handle).await;
-                        });
-                    },
-                )
-                .map_err(|e| format!("Failed to register show app shortcut: {}", e))?;
-
-            // Register global shortcut: format clipboard
-            let format_handle = app_handle.clone();
-            app.global_shortcut()
-                .on_shortcut(
-                    "CommandOrControl+Shift+V",
-                    move |_app, _shortcut, _event| {
-                        let handle = format_handle.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = format_clipboard_and_show(handle).await;
-                        });
-                    },
-                )
-                .map_err(|e| format!("Failed to register format clipboard shortcut: {}", e))?;
-
+        .manage(GlobalShortcutState::default())
+        .setup(|_app| {
             #[cfg(not(target_os = "macos"))]
             {
                 use std::path::Path;
@@ -106,6 +80,7 @@ pub fn run() {
             show_main_window,
             format_clipboard_and_show,
             update_shortcut,
+            sync_global_shortcuts,
             open_file_dialog,
             save_file,
             save_file_dialog,

@@ -37,6 +37,9 @@ export interface AppSettings {
   lineHeight: number;
   tabSize: number;
   showTreeView: boolean;
+
+  // Shortcuts
+  enableGlobalShortcuts: boolean;
 }
 
 // Default settings
@@ -49,6 +52,7 @@ const defaultSettings: AppSettings = {
   lineHeight: 20,
   tabSize: 2,
   showTreeView: true,
+  enableGlobalShortcuts: false,
 };
 
 // Load settings from localStorage

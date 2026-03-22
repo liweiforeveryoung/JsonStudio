@@ -23,8 +23,15 @@
   onMount(() => {
     settingsStore.init();
     shortcutsStore.init();
+    let lastEnableGlobalShortcuts: boolean | undefined;
+
     const unsubscribe = settingsStore.subscribe(settings => {
-      applyTheme(settings.isDarkMode);
+      void applyTheme(settings.isDarkMode);
+
+      if (lastEnableGlobalShortcuts === undefined || lastEnableGlobalShortcuts !== settings.enableGlobalShortcuts) {
+        lastEnableGlobalShortcuts = settings.enableGlobalShortcuts;
+        void shortcutsStore.syncGlobalShortcuts(settings.enableGlobalShortcuts);
+      }
     });
     return () => unsubscribe();
   });
@@ -33,4 +40,3 @@
 <div class="h-full w-full bg-(--bg-base)">
   <slot />
 </div>
-
