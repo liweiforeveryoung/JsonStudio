@@ -6,6 +6,7 @@ export interface Tab {
   id: string;                    // Unique identifier
   filePath: string | null;       // File path
   fileName: string | null;       // File name
+  customTitle: string | null;    // Custom display title for unsaved tabs
   content: string;               // Editor content
   isModified: boolean;           // Modified flag
   stats: JsonStats;              // JSON statistics
@@ -48,11 +49,19 @@ export function createNewTab(
     id: generateId(),
     filePath,
     fileName,
+    customTitle: null,
     content,
     isModified: false,
     stats: createEmptyStats(),
     isPinned,
   };
+}
+
+export function getTabDisplayName(tab: Tab): string {
+  if (tab.fileName) return tab.fileName;
+  const title = tab.customTitle?.trim();
+  if (title) return title;
+  return 'Untitled';
 }
 
 // Create default state with proper activeTabId
@@ -76,6 +85,7 @@ function loadState(): TabsState {
         ...tab,
         filePath: tab.filePath ?? null,
         fileName: tab.fileName ?? null,
+        customTitle: tab.customTitle ?? null,
         isModified: false,
         isPinned: tab.isPinned ?? false,
       }));
@@ -172,7 +182,7 @@ function createTabsStore() {
             ...state,
             tabs: state.tabs.map(tab =>
               tab.id === currentTab.id
-                ? { ...tab, content, filePath, fileName, isModified: false }
+                ? { ...tab, content, filePath, fileName, customTitle: null, isModified: false }
                 : tab
             ),
           };
@@ -270,7 +280,34 @@ function createTabsStore() {
           ...state,
           tabs: state.tabs.map(tab =>
             tab.id === tabId
-              ? { ...tab, filePath, fileName, isModified: false }
+              ? { ...tab, filePath, fileName, customTitle: null, isModified: false }
+              : tab
+          ),
+        };
+        saveState(newState);
+        return newState;
+      });
+    },
+
+    // Rename tab display title (only affects unsaved tabs)
+    renameTab: (tabId: string, title: string | null) => {
+      update(state => {
+        const target = state.tabs.find(t => t.id === tabId);
+        if (!target) return state;
+
+        // Only allow rename for unsaved tabs to avoid fileName mismatch
+        if (target.filePath) {
+          return state;
+        }
+
+        const nextTitle = (title ?? '').trim();
+        const normalized = nextTitle ? nextTitle : null;
+
+        const newState = {
+          ...state,
+          tabs: state.tabs.map(tab =>
+            tab.id === tabId
+              ? { ...tab, customTitle: normalized }
               : tab
           ),
         };

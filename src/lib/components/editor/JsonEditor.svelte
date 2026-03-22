@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getJsonStats, type JsonStats } from '$lib/services/json';
   import { readFile, getFileName } from '$lib/services/file';
-  import { tabsStore, activeTab } from '$lib/stores/tabs';
+  import { tabsStore, activeTab, getTabDisplayName } from '$lib/stores/tabs';
   import { fileWatcherService } from '$lib/services/fileWatcher';
   import MonacoEditor from './MonacoEditor.svelte';
   import MonacoDiffEditor from './MonacoDiffEditor.svelte';
@@ -217,7 +217,7 @@
         if (currentTab) {
           if (currentTab.isModified) {
             tabToClose = currentTab.id;
-            confirmMessage = `"${currentTab.fileName || 'Untitled'}" has unsaved changes. Close anyway?`;
+            confirmMessage = `"${getTabDisplayName(currentTab)}" has unsaved changes. Close anyway?`;
             isConfirmOpen = true;
             return;
           }

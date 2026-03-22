@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tabsStore, type Tab } from '$lib/stores/tabs';
+  import { tabsStore, getTabDisplayName, type Tab } from '$lib/stores/tabs';
   import { createEventDispatcher, onMount } from 'svelte';
   import ConfirmDialog from '../dialogs/ConfirmDialog.svelte';
   
@@ -22,6 +22,11 @@
   let isConfirmOpen = $state(false);
   let tabToClose = $state<string | null>(null);
   let confirmMessage = $state('');
+
+  // Rename (inline edit) state
+  let editingTabId = $state<string | null>(null);
+  let draftTitle = $state('');
+  let titleInputRef = $state<HTMLInputElement | null>(null);
 
   function handleTabClick(tabId: string) {
     tabsStore.setActiveTab(tabId);
@@ -69,7 +74,7 @@
     const tab = tabs.find((t: Tab) => t.id === tabId);
     if (tab && tab.isModified) {
       tabToClose = tabId;
-      confirmMessage = `"${tab.fileName || 'Untitled'}" has unsaved changes. Close anyway?`;
+      confirmMessage = `"${getTabDisplayName(tab)}" has unsaved changes. Close anyway?`;
       isConfirmOpen = true;
       return;
     }
@@ -94,6 +99,7 @@
   
   // Drag and drop handlers
   function handleDragStart(tabId: string, event: DragEvent) {
+    if (editingTabId === tabId) return;
     if (!event.dataTransfer) return;
     draggedTabId = tabId;
     event.dataTransfer.effectAllowed = 'move';
@@ -150,11 +156,45 @@
     dragOverTabId = null;
   }
   
-  function getTabDisplayName(tab: Tab): string {
-    if (tab.fileName) {
-      return tab.fileName;
+  function startRename(tab: Tab, event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (tab.filePath) return;
+    tabsStore.setActiveTab(tab.id);
+    editingTabId = tab.id;
+    draftTitle = tab.customTitle ?? '';
+
+    queueMicrotask(() => {
+      titleInputRef?.focus();
+      titleInputRef?.select();
+    });
+  }
+
+  function commitRename(tabId: string) {
+    if (editingTabId !== tabId) return;
+    const next = draftTitle.trim();
+    tabsStore.renameTab(tabId, next ? next : null);
+    editingTabId = null;
+    draftTitle = '';
+  }
+
+  function cancelRename() {
+    editingTabId = null;
+    draftTitle = '';
+  }
+
+  function handleRenameKeydown(tabId: string, event: KeyboardEvent) {
+    // Prevent global shortcuts (e.g. Cmd+W) while editing
+    event.stopPropagation();
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitRename(tabId);
+      return;
     }
-    return 'Untitled';
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelRename();
+    }
   }
 
   function getContextMenuTab(): Tab | null {
@@ -197,7 +237,7 @@
                  : 'text-(--text-secondary) border-transparent hover:bg-(--bg-hover)'
                }
                {dragOverTabId === tab.id ? 'drag-over' : ''}"
-        draggable="true"
+        draggable={editingTabId !== tab.id}
         onclick={() => handleTabClick(tab.id)}
         oncontextmenu={(e) => handleTabContextMenu(tab.id, e)}
         ondragstart={(e) => handleDragStart(tab.id, e)}
@@ -228,9 +268,30 @@
               </button>
             </div>
           {/if}
-          <span class="truncate block min-w-0">
-            {getTabDisplayName(tab)}
-          </span>
+          {#if editingTabId === tab.id}
+            <input
+              bind:this={titleInputRef}
+              class="min-w-0 w-full bg-transparent outline-none text-center"
+              placeholder="Untitled"
+              value={draftTitle}
+              oninput={(e) => { draftTitle = (e.target as HTMLInputElement).value; }}
+              onkeydown={(e) => handleRenameKeydown(tab.id, e)}
+              onblur={() => commitRename(tab.id)}
+              onclick={(e) => e.stopPropagation()}
+              onmousedown={(e) => e.stopPropagation()}
+              aria-label="Rename tab"
+            />
+          {:else}
+            <button
+              type="button"
+              class="truncate block min-w-0 bg-transparent border-none p-0 m-0 text-inherit cursor-pointer"
+              ondblclick={(e) => startRename(tab, e)}
+              title={!tab.filePath ? 'Double-click to rename' : undefined}
+              aria-label={!tab.filePath ? 'Rename tab' : 'Tab title'}
+            >
+              {getTabDisplayName(tab)}
+            </button>
+          {/if}
         </div>
         
         <!-- Right actions: Modified dot / Close button -->
