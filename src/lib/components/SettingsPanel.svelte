@@ -91,18 +91,31 @@
 {#if isOpen}
   <div
     class="settings-backdrop"
-    onclick={handleBackdropClick}
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="settings-title"
+    role="presentation"
   >
-    <div class="settings-dialog" onclick={(e) => e.stopPropagation()}>
+    <button
+      class="settings-backdrop-hit"
+      onclick={() => { isOpen = false; }}
+      aria-label={$t('tab.closeTab')}
+      title={$t('tab.closeTab')}
+      type="button"
+    ></button>
+
+    <div
+      class="settings-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      tabindex="-1"
+    >
       <!-- Header -->
       <div class="settings-header">
         <h2 id="settings-title" class="settings-title">{$t('settings.title')}</h2>
         <button
           class="settings-close-btn"
           onclick={() => { isOpen = false; }}
+          aria-label={$t('tab.closeTab')}
+          title={$t('tab.closeTab')}
           type="button"
         >
           <svg class="w-4.5 h-4.5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -224,11 +237,11 @@
                   <span class="settings-hint">{$t('settings.fontSizeHint')}</span>
                 </div>
                 <div class="settings-number-input">
-                  <button class="settings-stepper-btn" onclick={() => { if (settings.fontSize > 10) handleFontSizeChange(settings.fontSize - 1); }} disabled={settings.fontSize <= 10} type="button">
+                  <button class="settings-stepper-btn" onclick={() => { if (settings.fontSize > 10) handleFontSizeChange(settings.fontSize - 1); }} disabled={settings.fontSize <= 10} type="button" aria-label={`${$t('settings.fontSize')} -`} title={`${$t('settings.fontSize')} -`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
                   </button>
                   <span class="settings-stepper-value">{settings.fontSize}</span>
-                  <button class="settings-stepper-btn" onclick={() => { if (settings.fontSize < 24) handleFontSizeChange(settings.fontSize + 1); }} disabled={settings.fontSize >= 24} type="button">
+                  <button class="settings-stepper-btn" onclick={() => { if (settings.fontSize < 24) handleFontSizeChange(settings.fontSize + 1); }} disabled={settings.fontSize >= 24} type="button" aria-label={`${$t('settings.fontSize')} +`} title={`${$t('settings.fontSize')} +`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                   </button>
                 </div>
@@ -242,11 +255,11 @@
                   <span class="settings-hint">{$t('settings.lineHeightHint')}</span>
                 </div>
                 <div class="settings-number-input">
-                  <button class="settings-stepper-btn" onclick={() => { if (settings.lineHeight > 14) handleLineHeightChange(settings.lineHeight - 1); }} disabled={settings.lineHeight <= 14} type="button">
+                  <button class="settings-stepper-btn" onclick={() => { if (settings.lineHeight > 14) handleLineHeightChange(settings.lineHeight - 1); }} disabled={settings.lineHeight <= 14} type="button" aria-label={`${$t('settings.lineHeight')} -`} title={`${$t('settings.lineHeight')} -`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
                   </button>
                   <span class="settings-stepper-value">{settings.lineHeight}</span>
-                  <button class="settings-stepper-btn" onclick={() => { if (settings.lineHeight < 36) handleLineHeightChange(settings.lineHeight + 1); }} disabled={settings.lineHeight >= 36} type="button">
+                  <button class="settings-stepper-btn" onclick={() => { if (settings.lineHeight < 36) handleLineHeightChange(settings.lineHeight + 1); }} disabled={settings.lineHeight >= 36} type="button" aria-label={`${$t('settings.lineHeight')} +`} title={`${$t('settings.lineHeight')} +`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                   </button>
                 </div>
@@ -260,11 +273,11 @@
                   <span class="settings-hint">{$t('settings.indentSizeHint')}</span>
                 </div>
                 <div class="settings-number-input">
-                  <button class="settings-stepper-btn" onclick={() => { if (settings.tabSize > 1) handleTabSizeChange(settings.tabSize - 1); }} disabled={settings.tabSize <= 1} type="button">
+                  <button class="settings-stepper-btn" onclick={() => { if (settings.tabSize > 1) handleTabSizeChange(settings.tabSize - 1); }} disabled={settings.tabSize <= 1} type="button" aria-label={`${$t('settings.indentSize')} -`} title={`${$t('settings.indentSize')} -`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
                   </button>
                   <span class="settings-stepper-value">{settings.tabSize}</span>
-                  <button class="settings-stepper-btn" onclick={() => { if (settings.tabSize < 8) handleTabSizeChange(settings.tabSize + 1); }} disabled={settings.tabSize >= 8} type="button">
+                  <button class="settings-stepper-btn" onclick={() => { if (settings.tabSize < 8) handleTabSizeChange(settings.tabSize + 1); }} disabled={settings.tabSize >= 8} type="button" aria-label={`${$t('settings.indentSize')} +`} title={`${$t('settings.indentSize')} +`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                   </button>
                 </div>
@@ -282,6 +295,7 @@
                   onclick={() => handleTreeViewToggle(!settings.showTreeView)}
                   type="button"
                   aria-pressed={settings.showTreeView}
+                  aria-label={$t('settings.treeView')}
                 >
                   <span class="settings-toggle-thumb"></span>
                 </button>
@@ -323,6 +337,7 @@
                         class="settings-reset-btn"
                         onclick={() => shortcutsStore.resetShortcut(shortcut.id)}
                         title={$t('settings.resetShortcut')}
+                        aria-label={$t('settings.resetShortcut')}
                         type="button"
                       >
                         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -341,7 +356,8 @@
             </div>
           {/snippet}
 
-          <div class="settings-list !mb-3">
+          <div class="settings-shortcut-group-label">{$t('settings.shortcutsGlobal')}</div>
+          <div class="settings-list">
             <div class="settings-item">
               <div class="settings-item-row">
                 <div class="settings-item-label">
@@ -353,15 +369,12 @@
                   onclick={() => handleEnableGlobalShortcutsToggle(!settings.enableGlobalShortcuts)}
                   type="button"
                   aria-pressed={settings.enableGlobalShortcuts}
+                  aria-label={$t('settings.enableGlobalShortcuts')}
                 >
                   <span class="settings-toggle-thumb"></span>
                 </button>
               </div>
             </div>
-          </div>
-
-          <div class="settings-shortcut-group-label">{$t('settings.shortcutsGlobal')}</div>
-          <div class="settings-list">
             {@render shortcutRow('settings.showApp', 'settings.showAppDesc', shortcuts.showApp)}
             {@render shortcutRow('settings.formatClipboard', 'settings.formatClipboardDesc', shortcuts.formatClipboard)}
           </div>
@@ -402,7 +415,19 @@
     animation: fadeIn 0.2s ease-out forwards;
   }
 
+  .settings-backdrop-hit {
+    position: absolute;
+    inset: 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    z-index: 0;
+  }
+
   .settings-dialog {
+    position: relative;
+    z-index: 1;
     background: color-mix(in srgb, var(--bg-primary) 85%, transparent);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
