@@ -447,6 +447,14 @@
 
     <!-- 2. JSON transform -->
     <div class="toolbar-group">
+      <button class="toolbar-btn" onclick={handleExtractJson} disabled={isProcessing} title={$t('extractJson.button')}>
+        <svg class="toolbar-icon" style="color: #22c55e;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 4v16"/>
+          <path d="M16 4v16"/>
+          <path d="M12 4v16"/>
+        </svg>
+        {$t('extractJson.button')}
+      </button>
       <button class="toolbar-btn is-primary" onclick={handleFormat} disabled={isProcessing} title="{$t('toolbar.format')} ({shortcutLabel('format')})">
         <svg class="toolbar-icon" style="color: #10b981;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 4c-2 0-3 1-3 3v2c0 1-1 2-2 2 1 0 2 1 2 2v2c0 2 1 3 3 3"/>
@@ -477,14 +485,6 @@
       <button class="toolbar-btn" onclick={handleUnfoldAll} disabled={isProcessing} title="{$t('toolbar.unfoldAll')} ({shortcutLabel('unfoldAll')})">
         <svg class="toolbar-icon" style="color: #34d399;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l5-4 5 4"/><path d="M7 16l5 4 5-4"/></svg>
         {$t('toolbar.unfoldAll')}
-      </button>
-      <button class="toolbar-btn" onclick={handleExtractJson} disabled={isProcessing} title={$t('extractJson.button')}>
-        <svg class="toolbar-icon" style="color: #22c55e;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 4v16"/>
-          <path d="M16 4v16"/>
-          <path d="M12 4v16"/>
-        </svg>
-        {$t('extractJson.button')}
       </button>
     </div>
 
