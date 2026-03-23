@@ -160,7 +160,7 @@ function normalizePointer(pointer: string): string {
   return pointer.startsWith('#') ? pointer.slice(1) : pointer;
 }
 
-function addAncestorPaths(path: string, expanded: Set<string>) {
+export function addAncestorPaths(path: string, expanded: Set<string>) {
   if (!path || path === '/') return;
 
   const segments = path.split('/').slice(1);

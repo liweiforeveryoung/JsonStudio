@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { settingsStore } from '$lib/stores/settings';
   import { t } from '$lib/i18n';
-  import { runTreeQuery, type QueryMode } from '$lib/services/treeQuery';
+  import { addAncestorPaths, runTreeQuery, type QueryMode } from '$lib/services/treeQuery';
   import type MonacoEditor from './MonacoEditor.svelte';
 
   type TreeNode = {
@@ -89,6 +89,8 @@
   let searchBoxEl: HTMLDivElement;
   let searchInputEl: HTMLInputElement;
 
+  const nodeElMap = new Map<string, HTMLElement>();
+
   const COMPLETION_NODE_LIMIT = 50_000;
   const SUGGEST_LIMIT = 30;
   const SUGGEST_DEBOUNCE_MS = 80;
@@ -97,10 +99,40 @@
   let suggestions = $state<CompletionItem[]>([]);
   let isSuggestOpen = $state(false);
   let activeSuggestIndex = $state(0);
+  let previewPointer = $state<string | null>(null);
+  let previewPath = $state<string | null>(null);
   let suggestTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFilterMode = $state<QueryMode>('jmespath');
   let lastFilterInput = $state('');
   let lastFiltered = $state<CompletionItem[]>([]);
+
+  function registerTreeNodeEl(el: HTMLElement, path: string) {
+    nodeElMap.set(path, el);
+    return {
+      destroy() {
+        const current = nodeElMap.get(path);
+        if (current === el) nodeElMap.delete(path);
+      },
+    };
+  }
+
+  function scrollSuggestItemIntoView(index: number) {
+    requestAnimationFrame(() => {
+      const container = document.querySelector('.json-tree-suggest');
+      const items = container?.querySelectorAll('.json-tree-suggest-item');
+      const item = items?.[index] as HTMLButtonElement | undefined;
+      if (item && container) {
+        const containerRect = container.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+
+        if (itemRect.top < containerRect.top) {
+          item.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        } else if (itemRect.bottom > containerRect.bottom) {
+          item.scrollIntoView({ block: 'end', behavior: 'smooth' });
+        }
+      }
+    });
+  }
 
   // Build tree when content changes
   $effect(() => {
@@ -134,6 +166,55 @@
 
   $effect(() => {
     scheduleSuggestUpdate(queryMode, searchQuery, completionIndex);
+  });
+
+  $effect(() => {
+    const _q = searchQuery;
+    const _m = queryMode;
+    if (_q === undefined || _m === undefined) return;
+    previewPointer = null;
+    previewPath = null;
+  });
+
+  $effect(() => {
+    if (isSuggestOpen) return;
+    previewPointer = null;
+    previewPath = null;
+  });
+
+  $effect(() => {
+    const pointer = previewPointer;
+    const open = isSuggestOpen;
+    const nodes = treeNodes;
+    if (!open || !pointer || nodes.length === 0) return;
+
+    previewPath = pointer;
+
+    const nextExpanded = new Set(expandedNodes);
+    addAncestorPaths(pointer, nextExpanded);
+    if (nextExpanded.size !== expandedNodes.size) {
+      expandedNodes = nextExpanded;
+      isAllExpanded = false;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      await tick();
+      if (cancelled) return;
+
+      let el = nodeElMap.get(pointer);
+      if (!el) {
+        await tick();
+        if (cancelled) return;
+        el = nodeElMap.get(pointer);
+      }
+
+      el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   $effect(() => {
@@ -268,6 +349,8 @@
     searchQuery = nextValue;
     isSuggestOpen = false;
     activeSuggestIndex = 0;
+    previewPointer = null;
+    previewPath = null;
     setTimeout(() => {
       try {
         searchInputEl?.focus();
@@ -279,6 +362,8 @@
   function handleSearchKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       isSuggestOpen = false;
+      previewPointer = null;
+      previewPath = null;
       return;
     }
 
@@ -286,7 +371,11 @@
       if (!isSuggestOpen && suggestions.length > 0) isSuggestOpen = true;
       if (!isSuggestOpen || suggestions.length === 0) return;
       event.preventDefault();
-      activeSuggestIndex = (activeSuggestIndex + 1) % suggestions.length;
+      if (activeSuggestIndex < suggestions.length - 1) {
+        activeSuggestIndex++;
+      }
+      previewPointer = suggestions[activeSuggestIndex]?.pointer ?? null;
+      scrollSuggestItemIntoView(activeSuggestIndex);
       return;
     }
 
@@ -294,7 +383,11 @@
       if (!isSuggestOpen && suggestions.length > 0) isSuggestOpen = true;
       if (!isSuggestOpen || suggestions.length === 0) return;
       event.preventDefault();
-      activeSuggestIndex = (activeSuggestIndex - 1 + suggestions.length) % suggestions.length;
+      if (activeSuggestIndex > 0) {
+        activeSuggestIndex--;
+      }
+      previewPointer = suggestions[activeSuggestIndex]?.pointer ?? null;
+      scrollSuggestItemIntoView(activeSuggestIndex);
       return;
     }
 
@@ -900,17 +993,25 @@
         {@const hasChild = hasChildren(node)}
         {@const isExpanded = expandedNodes.has(node.path) || queryExpandedNodes.has(node.path)}
         {@const isSelected = selectedPath === node.path}
+        {@const isPreview = !isSelected && previewPath === node.path}
         {@const isMatched = queryMatches.has(node.path)}
         {@const childCount = getChildCount(node)}
         {@const showValue = node.type !== 'object' && node.type !== 'array'}
         
-        <div class="tree-node" class:tree-node-selected={isSelected} class:tree-node-matched={isMatched}>
+        <div
+          class="tree-node"
+          class:tree-node-selected={isSelected}
+          class:tree-node-preview={isPreview}
+          class:tree-node-matched={isMatched}
+        >
           <div 
             class="tree-node-content"
             onclick={() => selectNode(node)}
             onkeydown={(e) => handleNodeKeydown(e, node)}
             role="button"
             tabindex="0"
+            data-pointer={node.path}
+            use:registerTreeNodeEl={node.path}
           >
             <!-- Tree Lines -->
             {#if depth > 0}
