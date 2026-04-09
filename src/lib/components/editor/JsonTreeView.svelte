@@ -586,6 +586,14 @@
       return String(node.value);
     }
     if (node.type === 'number') {
+      // Extract the raw number text from the source to avoid precision loss
+      // for integers exceeding Number.MAX_SAFE_INTEGER
+      if (node.startOffset < node.endOffset && node.endOffset <= content.length) {
+        const raw = content.slice(node.startOffset, node.endOffset).trim();
+        if (raw && /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) {
+          return raw;
+        }
+      }
       return String(node.value);
     }
     return '';
@@ -657,12 +665,20 @@
     isAllExpanded = false;
   }
 
+  function getRawValue(node: TreeNode): string {
+    if (node.startOffset < node.endOffset && node.endOffset <= content.length) {
+      return content.slice(node.startOffset, node.endOffset);
+    }
+    return '';
+  }
+
   async function copyEntry(node: TreeNode) {
     const queryPath = queryMode === 'jsonpath'
       ? pointerToJsonPath(node.path, rootData)
       : pointerToJmesPath(node.path, rootData);
     const dotPath = queryPath || node.key;
-    const valueText = JSON.stringify(node.value) ?? 'null';
+    const rawSource = getRawValue(node);
+    const valueText = rawSource || (JSON.stringify(node.value) ?? 'null');
     const entryText = `${dotPath}: ${valueText}`;
 
     try {
